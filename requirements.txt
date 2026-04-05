@@ -1,0 +1,18 @@
+pandas>=2.0.0
+ansible-runner>=2.3.0
+ansible-core>=2.15.0
+fastapi>=0.100.0
+fastmcp>=0.1.0
+uvicorn>=0.23.0
+pydantic>=2.0.0
+sqlalchemy>=2.0.0
+loguru>=0.7.0
+pyyaml>=6.0
+# 不要修改以下开发时辅助工具
+# black
+# mypy
+# pylint
+# isort
+# ipython
+# mcp[cli]
+# pytest>=7.0.0

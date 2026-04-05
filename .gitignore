@@ -1,0 +1,15 @@
+__pycache__
+*.py[cdo]
+/.ansible
+/.mypy_cache
+/.trae
+/.vscode
+/dev_tools
+/logs/*
+/pylintrc
+/retries/*
+/sample
+/tmp/*
+/venv/*
+inventory.yml
+!.gitignore

@@ -1,0 +1,18 @@
+[Unit]
+Description=TSC Ansible MCP Service (MCP + REST API)
+After=network.target
+
+[Service]
+Type=simple
+User=tsc
+Group=tsc
+WorkingDirectory=/home/tsc/tsc_ansible_mcp
+Environment=PATH=/home/tsc/tsc_ansible_mcp/venv/bin:%{PATH}
+ExecStart=/home/tsc/tsc_ansible_mcp/venv/bin/python bin/server.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/tsc/tsc_ansible_mcp/logs/server.log
+StandardError=append:/home/tsc/tsc_ansible_mcp/logs/server.log
+
+[Install]
+WantedBy=multi-user.target

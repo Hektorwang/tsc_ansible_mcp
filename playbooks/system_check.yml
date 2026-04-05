@@ -1,0 +1,34 @@
+# @description: 示例 playbook - 在目标主机上执行基础系统检查，包括主机名、内核版本、磁盘使用情况
+# @author: tsc
+# @version: 1.0.0
+# @tags: system, check, info
+# @parameters:
+#   - check_hostname: 是否检查主机名 (默认: true)
+#   - check_kernel: 是否检查内核版本 (默认: true)
+#   - check_disk: 是否检查磁盘使用 (默认: true)
+---
+- name: System information check
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check hostname
+      ansible.builtin.command: hostname
+      register: hostname_result
+      changed_when: false
+
+    - name: Check kernel version
+      ansible.builtin.command: uname -r
+      register: kernel_result
+      changed_when: false
+
+    - name: Check disk usage
+      ansible.builtin.command: df -h
+      register: disk_result
+      changed_when: false
+
+    - name: Display results
+      ansible.builtin.debug:
+        msg:
+          - "Hostname: {{ hostname_result.stdout }}"
+          - "Kernel: {{ kernel_result.stdout }}"
+          - "Disk usage available"

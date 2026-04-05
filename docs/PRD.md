@@ -1,0 +1,136 @@
+# TSC\_ANSIBLE\_MCP 产品需求文档
+
+## 1. 产品概述
+
+本工具的目的: 可通过 LLM 传入`目标服务器 SSH 信息`, `要执行的操作`，通过 `FastMCP`, `FastAPI`, `ansible-runner` 作为基础设施对目标服务器进行操作.
+
+## 2. 核心功能需求
+
+### 2.1 远程指令执行 (Ad-hoc Mode)
+
+- 支持通过 LLM 或 REST API 传入任意 Shell 指令并在目标机执行
+- 支持批量执行(分批模式，每批 10 台, 主配置文件可配置默认值)
+- 具备指令超时控制(预设 300s，主配置文件可配置默认值)
+- 完整捕获 `stdout`, `stderr` 及退出码 (`RC`)
+
+### 2.2 Playbook 执行能力
+
+- 支持执行存放在 `playbooks/` 目录下的 Ansible playbook 文件
+- 支持列出可用的 playbook 文件
+- 支持传入额外变量（extravars）
+- 支持指定目标主机执行 playbook
+- 支持批量执行和超时控制
+
+### 2.3 Ansible 模块直接调用
+
+- 支持直接调用 Ansible `copy` 模块进行文件分发
+- 支持直接调用 Ansible `fetch` 模块从远程获取文件
+- 支持设置文件权限、所有者等属性
+- 支持扁平化目录结构选项
+
+### 2.4 环境自举与感知 (Bootstrapping)
+
+- 无 Python 执行能力: Playbook 设置 `gather_facts: false`，仅使用 `raw` 模块
+- 自动识别架构(`uname -m`)和发行版(`cat /etc/os-release`)
+- 归一化映射(主配置文件): 架构 `arm64` -> `aarch64`, `amd64` -> `x86_64`; 发行版 `rhel/centos -> RedHat`，`ubuntu/debian -> Debian`
+- Python 安装包格式: `tsc_python-{version}-{distro}-{arch}-{date}.sh`
+- 幂等性检查: 安装前先 `which python3 || test -f /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3`
+
+### 2.5 SSH 认证
+
+按如下优先级, 失败后 fallback 到下一项:
+
+- 支持 \~/.ssh/config 默认行为
+- SSH 密钥认证(操作系统默认)
+- 支持密码认证
+
+### 2.6 安全控制
+
+- 高危指令黑名单预拦截(`rm -rf /` 等)
+
+## 3. MCP 工具列表
+
+| 工具名称             | 功能描述                                                       | 对应 ansible 功能 |
+| -------------------- | ---------------------------------------------------------- | ------------- |
+| `check_host_status`  | 检查主机状态(架构, 发行版, Python, tsc_tools)                  | raw           |
+| `install_tsc_tools`  | 安装 `tsc_tools` 环境                                          | raw           |
+| `install_python`     | 安装 `tsc_python` 环境                                         | raw           |
+| `ansible_shell`      | 执行远程 Shell 命令                                            | shell         |
+| `ansible_copy`       | 调用 ansible copy 模块，分发文件到远程主机                       | copy          |
+| `ansible_fetch`      | 调用 ansible fetch 模块，从远程主机获取文件                      | fetch         |
+| `list_playbooks`     | 列出可用的 playbook 文件，包含元数据说明                         | -             |
+| `ansible_playbook`   | 执行 playbook 文件                                            | ansible-playbook |
+| `get_task_status`    | 查询任务状态                                                   | 无            |
+
+## 4. Playbook 元数据规范
+
+为支持 LLM 理解 playbook 用途，所有 playbook 文件必须包含以下元数据：
+
+### 4.1 元数据格式
+
+在 playbook 文件顶部使用 YAML 注释声明元数据：
+
+```yaml
+# @description: 本 playbook 用于安装和配置 Nginx 服务
+# @author: tsc
+# @version: 1.0.0
+# @tags: nginx, web, install
+# @parameters:
+#   - nginx_version: Nginx 版本号 (默认: 1.24.0)
+#   - nginx_port: Nginx 监听端口 (默认: 80)
+---
+- name: Install and configure Nginx
+  hosts: all
+  ...
+```
+
+### 4.2 元数据字段说明
+
+| 字段          | 必填 | 说明                           |
+| ------------- | ---- | ------------------------------ |
+| @description  | 是   | playbook 功能描述，供 LLM 理解 |
+| @author       | 否   | 作者信息                       |
+| @version      | 否   | playbook 版本号                |
+| @tags         | 否   | 标签，便于分类和搜索           |
+| @parameters   | 否   | 可传入的参数说明               |
+
+### 4.3 list_playbooks 返回格式
+
+```json
+{
+  "playbooks": [
+    {
+      "name": "install_nginx.yml",
+      "path": "playbooks/install_nginx.yml",
+      "description": "本 playbook 用于安装和配置 Nginx 服务",
+      "author": "tsc",
+      "version": "1.0.0",
+      "tags": ["nginx", "web", "install"],
+      "parameters": [
+        {"name": "nginx_version", "description": "Nginx 版本号", "default": "1.24.0"},
+        {"name": "nginx_port", "description": "Nginx 监听端口", "default": "80"}
+      ]
+    }
+  ]
+}
+```
+
+## 5. 数据存储
+
+- 任务状态: SQLite(`logs/tsc_ansible_mcp.db`)
+- Inventory 缓存: YAML(`etc/inventory.yml`，Ansible 标准格式)
+
+## 7. 验证标准
+
+- 单台执行延迟(含探测)不超过 60 秒
+- 支持至少 100 台机器同时触发(分批执行)
+- 无 Python 环境下 `raw` 模式执行成功率 100%
+
+## 8. 相关文档
+
+- [架构设计文档](./ARCHITECTURE.md)
+- [API 参考文档](./API-REFERENCE.md)
+- [技术规格说明](./SPEC.md)
+- [Agent 使用指南](./AGENT.md)
+- [开发任务清单](./TODO.md)
+

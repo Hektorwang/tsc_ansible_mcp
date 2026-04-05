@@ -1,0 +1,58 @@
+# TSC_ANSIBLE_MCP 配置文件
+
+[mcp]
+default_timeout = 600
+host = "0.0.0.0"
+max_timeout = 3600
+path = "/mcp"
+port = 8500
+transport = "http"
+
+[tsc_repo]
+base_url = "http://192.168.19.22/tsc_install"
+local_path = "/home/tsc/cicd/html/tsc_install"
+
+# 安装包 URL 模板（支持变量: {version}, {distro}, {arch}, {date}）
+tsc_python_url_template = "/tsc_python-{version}-{distro}-{arch}-{date}.sh"
+tsc_tools_url_template = "/tsc_tools-{version}-noarch-{date}.sh"
+
+[normalization.architecture]
+aarch64 = "aarch64"
+amd64 = "x86_64"
+arm64 = "aarch64"
+x86_64 = "x86_64"
+
+[normalization.distribution]
+almalinux = "RedHat"
+alpine = "Alpine"
+arch = "Arch"
+centos = "RedHat"
+debian = "Debian"
+fedora = "RedHat"
+fitserveros = "Euler"
+fitstarryskyos = "Euler"
+hce = "Euler"
+linuxmint = "Debian"
+manjaro = "Arch"
+ningos = "Euler"
+openeuler = "Euler"
+opensuse = "Suse"
+rhel = "RedHat"
+rocky = "RedHat"
+suse = "Suse"
+ubuntu = "Debian"
+
+[ansible]
+high_risk_commands = ["rm", "unlink", "halt", "shutdown", "mkfs", "parted", "reboot", "poweroff", "init", "dd", "format", "wipefs"]
+
+[execution]
+forks = 10
+serial = 10
+timeout = 300
+
+[playbooks]
+path = "playbooks"
+
+[logging]
+dir = "logs"
+level = "INFO"
