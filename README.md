@@ -39,6 +39,7 @@ TSC Ansible MCP 是一个远程主机自动化管理平台，支持通过 MCP �
 - 列出可用的 playbook 文件（含元数据说明）
 - 执行指定的 playbook 文件
 - 支持传入额外变量
+- **动态工具生成**: 每个 playbook 自动生成独立的 MCP 工具，LLM 可直接调用
 
 ### 6. API 认证
 

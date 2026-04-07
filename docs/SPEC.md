@@ -24,7 +24,7 @@
 - shell 必须使用函数注释(google 风格)
 - python 必须使用 type hint
 - 必须在项目根目录下放置 `README.md` 文件描述本项目的功能、安装、配置、使用等
-- 必须在项目根目录下放置 `release-note.md` 描述本项目的版本变更, 以及在第三行使用 `## Version=1.3.0` 标识当前版本
+- 必须在项目根目录下放置 `release-note.md` 描述本项目的版本变更, 以及在第三行使用 `## Version=1.4.0` 标识当前版本
 
 ### 1.3 优先选择
 
@@ -296,10 +296,81 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 | pandas         | >= 2.0.0  |
 | SQLAlchemy     | >= 2.0.0  |
 | loguru         | >= 0.7.0  |
+| watchdog       | >= 3.0.0  |
 
-## 10. 测试环境规格
+## 10. 动态 Playbook 工具生成机制
 
-### 10.1 测试主机
+### 10.1 核心组件
+
+**PlaybookScanner 类** (`lib/playbook_scanner.py`):
+- 扫描 `playbooks/` 目录下的所有 `.yml` 和 `.yaml` 文件
+- 解析 playbook 元数据（JSON 格式）
+- 生成工具定义（名称、描述、参数）
+- 使用 watchdog 监控文件变化
+
+### 10.2 工具生成规则
+
+**命名规则**:
+- 使用 playbook 文件名（不含扩展名）
+- 例如: `collect_iaas_info.yml` -> 工具名 `collect_iaas_info`
+
+**描述生成**:
+基于元数据字段自动生成结构化描述:
+- description: 功能描述
+- parameters: 参数说明
+- use_cases: 使用场景
+- example: 使用示例
+- notes: 注意事项
+
+**参数定义**:
+固定参数:
+- targets: 目标主机列表
+- user: SSH 用户名
+- port: SSH 端口
+- password: SSH 密码
+- private_key: SSH 私钥路径
+- extravars: 额外变量（根据元数据中的 parameters 字段）
+- timeout: 超时时间
+
+### 10.3 文件监控
+
+**监控机制**:
+- 使用 watchdog 库实现跨平台文件监控
+- Linux: 使用 inotify
+- macOS: 使用 FSEvents
+- Windows: 使用 ReadDirectoryChangesW
+
+**监控事件**:
+- 文件创建: 新增 playbook 工具
+- 文件修改: 更新 playbook 工具定义
+- 文件删除: 移除 playbook 工具
+
+**热更新限制**:
+- 文件变化时会更新缓存
+- 需要重启服务才能使新的工具生效
+- 原因: FastMCP 的工具注册机制限制
+
+### 10.4 元数据要求
+
+**必填字段**:
+- description: playbook 功能描述
+
+**可选字段**:
+- author: 作者信息
+- version: 版本号
+- tags: 标签列表
+- parameters: 参数定义
+- use_cases: 使用场景列表
+- example: 使用示例
+- notes: 注意事项列表
+
+**缺失元数据处理**:
+- 跳过没有 description 字段的 playbook
+- 在日志中记录警告信息
+
+## 11. 测试环境规格
+
+### 11.1 测试主机
 
 | 属性 | 值                      |
 | ---- | ----------------------- |
@@ -310,7 +381,7 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 | 内核 | `3.10.0-693.el7.x86_64` |
 | 架构 | `x86_64`                |
 
-### 10.2 测试连接命令样例
+### 11.2 测试连接命令样例
 
 ```bash
 sshpass -vp JScz-320400 ssh root@192.168.19.35 -p 3204 -o 'PreferredAuthentications=password' -o 'PubkeyAuthentication=no'
@@ -321,4 +392,5 @@ sshpass -vp JScz-320400 ssh root@192.168.19.35 -p 3204 -o 'PreferredAuthenticati
 - [PRD 文档](./PRD.md)
 - [架构设计文档](./ARCHITECTURE.md)
 - [API 参考文档](./API-REFERENCE.md)
-- [Agent 使用指南](./AGENT.md)
+- [开发任务清单](./TODO.md)
+- [开发任务清单](./TODO.md)

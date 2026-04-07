@@ -288,6 +288,45 @@ bash /tmp/tsc_tools.sh
 5. 返回各主机运行结果
 ```
 
+### 4.11 动态 Playbook 工具生成
+
+**功能**: 服务启动时自动扫描 playbooks 目录，为每个 playbook 动态生成独立的 MCP 工具
+
+**实现方式**: PlaybookScanner 类 + FastMCP 动态工具注册
+
+**核心组件**:
+
+- `lib/playbook_scanner.py`: PlaybookScanner 类
+- `lib/server.py`: `_register_dynamic_playbook_tools()` 方法
+
+**执行流程**:
+
+```text
+1. 服务启动时创建 PlaybookScanner 实例
+2. 扫描 playbooks 目录下所有 .yml/.yaml 文件
+3. 解析每个 playbook 的元数据（JSON 格式）
+4. 生成工具定义（名称、描述、参数）
+5. 使用 @mcp.tool() 装饰器动态注册工具
+6. 启动 watchdog 文件监控
+```
+
+**工具命名规则**:
+
+- 使用 playbook 文件名（不含扩展名）
+- 例如: `collect_iaas_info.yml` -> 工具名 `collect_iaas_info`
+
+**元数据要求**:
+
+- 必须包含 `description` 字段
+- 建议包含 `parameters`、`use_cases`、`example`、`notes` 字段
+- 缺少元数据的 playbook 将被跳过并在日志中告警
+
+**文件监控**:
+
+- 使用 watchdog 库实现跨平台文件监控
+- 监控事件: 文件创建、修改、删除
+- 热更新限制: 需要重启服务才能使新的工具生效
+
 ## 5. 技术选型说明
 
 ### 5.1 为什么选择 FastMCP？
@@ -340,5 +379,4 @@ bash /tmp/tsc_tools.sh
 - [PRD 文档](./PRD.md)
 - [API 参考文档](./API-REFERENCE.md)
 - [技术规格说明](./SPEC.md)
-- [Agent 使用指南](./AGENT.md)
 - [开发任务清单](./TODO.md)

@@ -40,7 +40,7 @@
 
 按如下优先级, 失败后 fallback 到下一项:
 
-- 支持 \~/.ssh/config 默认行为
+- 支持 `~/.ssh/config` 默认行为
 - SSH 密钥认证(操作系统默认)
 - 支持密码认证
 
@@ -174,6 +174,4 @@
 - [架构设计文档](./ARCHITECTURE.md)
 - [API 参考文档](./API-REFERENCE.md)
 - [技术规格说明](./SPEC.md)
-- [Agent 使用指南](./AGENT.md)
-- [认证使用指南](./AUTH-GUIDE.md)
 - [开发任务清单](./TODO.md)

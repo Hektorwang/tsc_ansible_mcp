@@ -1,0 +1,14 @@
+all:
+  hosts:
+    192.168.19.104:
+      ansible_host: 192.168.19.104
+      ansible_password: 123321123
+      ansible_port: 3204
+      ansible_python_interpreter: /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3
+      ansible_user: root
+    192.168.19.35:
+      ansible_host: 192.168.19.35
+      ansible_password: 1234567
+      ansible_port: 3204
+      ansible_python_interpreter: ''
+      ansible_user: root

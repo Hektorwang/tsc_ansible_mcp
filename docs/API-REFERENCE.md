@@ -835,5 +835,4 @@ sk-tsc-ansible-mcp-2026-dev
 - [PRD 文档](./PRD.md)
 - [架构设计文档](./ARCHITECTURE.md)
 - [技术规格说明](./SPEC.md)
-- [Agent 使用指南](./AGENT.md)
 - [开发任务清单](./TODO.md)

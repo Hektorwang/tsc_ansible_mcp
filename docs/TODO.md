@@ -1,4 +1,40 @@
-# TSC_ANSIBLE_MCP v1.1.0 开发任务清单
+# TSC_ANSIBLE_MCP 开发任务清单
+
+## v1.4.0 已完成任务
+
+### 动态 Playbook 工具生成
+
+- [x] 创建 PlaybookScanner 类 (`lib/playbook_scanner.py`)
+- [x] 实现 playbook 元数据解析（JSON 格式）
+- [x] 实现动态工具注册机制
+- [x] 添加 watchdog 文件监控
+- [x] 更新文档（PRD.md, SPEC.md, ARCHITECTURE.md）
+- [x] 代码格式化和类型检查
+
+---
+
+## v1.3.0 已完成任务
+
+### API 认证系统
+
+- [x] 实现 Bearer Token 认证机制
+- [x] Token 文件管理 (`etc/tokens.txt`)
+- [x] 认证中间件保护所有端点
+- [x] 审计日志记录
+
+### 上下文管理工具
+
+- [x] set_context / get_context / delete_context
+- [x] list_contexts / clear_contexts
+
+### Python 检测逻辑优化
+
+- [x] 新增 tsc_python_installed 字段
+- [x] 修复 install_python 判断逻辑
+
+---
+
+## v1.1.0 已完成任务
 
 ## 版本概述
 

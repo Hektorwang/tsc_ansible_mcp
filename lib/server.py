@@ -20,6 +20,7 @@ from lib.database import Database, TaskRepository, ContextRepository
 from lib.executor import Executor
 from lib.inventory_manager import InventoryManager
 from lib.logger import get_logger
+from lib.playbook_scanner import PlaybookScanner
 
 logger = get_logger()
 
@@ -173,12 +174,14 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         self.inventory_manager = InventoryManager()
         self.executor = Executor(self.config, self.inventory_manager)
         self.auth = AuthMiddleware(self.config)
+        self.playbook_scanner = PlaybookScanner(self.config)
         self.mcp = FastMCP(
             name="tsc_ansible_mcp",
-            version="1.3.0",
+            version="1.4.0",
             instructions=self.MCP_INSTRUCTIONS,
         )
         self._register_mcp_tools()
+        self._register_dynamic_playbook_tools()
         self.app = self._create_fastapi_app()
 
     def _register_mcp_tools(self) -> None:
@@ -284,12 +287,20 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 failed_hosts = []
                 for host, r in result.get("results", {}).items():
                     if not r.get("installed") and not r.get("skipped"):
-                        failed_hosts.append({"host": host, "message": r.get("message", "安装失败")})
+                        failed_hosts.append(
+                            {"host": host, "message": r.get("message", "安装失败")}
+                        )
                 if failed_hosts:
                     result["error"] = "Python 安装失败，请停止后续操作并退出流程"
                     result["failed_hosts"] = failed_hosts
-                    result["action_required"] = "请停止当前流程，向用户报告错误信息，不要继续执行后续操作"
-                self.task_repo.update(task_id, "success" if not failed_hosts else "partial_success", result)
+                    result["action_required"] = (
+                        "请停止当前流程，向用户报告错误信息，不要继续执行后续操作"
+                    )
+                self.task_repo.update(
+                    task_id,
+                    "success" if not failed_hosts else "partial_success",
+                    result,
+                )
                 return result
             except Exception as e:
                 logger.exception(f"install_python 执行失败: {e}")
@@ -405,13 +416,21 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 failed_hosts = []
                 for host, r in result.get("results", {}).items():
                     if not r.get("installed") and not r.get("skipped"):
-                        failed_hosts.append({"host": host, "message": r.get("message", "安装失败")})
+                        failed_hosts.append(
+                            {"host": host, "message": r.get("message", "安装失败")}
+                        )
                 if failed_hosts:
                     result["error"] = "tsc_tools 安装失败，请停止后续操作并退出流程"
                     result["failed_hosts"] = failed_hosts
-                    result["action_required"] = "请停止当前流程，向用户报告错误信息，不要继续执行后续操作"
+                    result["action_required"] = (
+                        "请停止当前流程，向用户报告错误信息，不要继续执行后续操作"
+                    )
                 result["task_id"] = task_id
-                self.task_repo.update(task_id, "success" if not failed_hosts else "partial_success", result)
+                self.task_repo.update(
+                    task_id,
+                    "success" if not failed_hosts else "partial_success",
+                    result,
+                )
                 return result
             except Exception as e:
                 logger.exception(f"install_tsc_tools 执行失败: {e}")
@@ -637,6 +656,73 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             count = self.context_repo.clear()
             return {"status": "success", "message": f"已清空 {count} 条上下文数据"}
 
+    def _register_dynamic_playbook_tools(self) -> None:
+        """动态注册 playbook 工具"""
+        self.playbook_scanner.scan_playbooks()
+
+        for playbook_name, metadata in self.playbook_scanner.playbooks.items():
+            tool_description = self.playbook_scanner.generate_tool_definition(metadata)
+
+            def make_playbook_tool(playbook_name: str):
+                def playbook_tool(
+                    targets: List[str],
+                    user: Optional[str] = None,
+                    port: Optional[int] = None,
+                    password: Optional[str] = None,
+                    private_key: Optional[str] = None,
+                    extravars: Optional[Dict[str, Any]] = None,
+                    timeout: Optional[int] = None,
+                ) -> Dict[str, Any]:
+                    logger.info(f"MCP 工具调用: {playbook_name}, targets={targets}")
+                    credentials: Dict[str, Any] = {}
+                    if user:
+                        credentials["user"] = user
+                    if port:
+                        credentials["port"] = port
+                    if password:
+                        credentials["password"] = password
+                    if private_key:
+                        credentials["private_key"] = private_key
+                    task_id = str(uuid.uuid4())
+                    self.task_repo.create(task_id, playbook_name, {"targets": targets})
+                    try:
+                        self.task_repo.update(task_id, "running")
+                        result = self.executor.run_playbook(
+                            playbook=playbook_name,
+                            targets=targets,
+                            credentials=credentials if credentials else None,
+                            extravars=extravars,
+                            timeout=timeout,
+                        )
+                        result["task_id"] = task_id
+                        self.task_repo.update(task_id, result["status"], result)
+                        return result
+                    except Exception as e:
+                        logger.exception(f"{playbook_name} 执行失败: {e}")
+                        self.task_repo.update(task_id, "failed", {"error": str(e)})
+                        return {"task_id": task_id, "status": "failed", "error": str(e)}
+
+                return playbook_tool
+
+            tool_func = make_playbook_tool(playbook_name)
+            tool_func.__name__ = playbook_name
+            tool_func.__doc__ = tool_description
+
+            decorated_tool = self.mcp.tool(
+                name=playbook_name,
+                description=tool_description,
+            )(tool_func)
+
+            logger.info(f"已注册 playbook 工具: {playbook_name}")
+
+    def _on_playbook_changed(self) -> None:
+        """Playbook 文件变化回调
+
+        注意: 由于 FastMCP 的工具注册机制，文件变化后需要重启服务才能生效
+        """
+        logger.info("检测到 playbook 文件变化，更新已缓存")
+        logger.warning("注意: 需要重启服务才能使新的 playbook 工具生效")
+
     def _create_fastapi_app(self) -> FastAPI:
         app = FastAPI(
             title="TSC_ANSIBLE_MCP API",
@@ -842,7 +928,11 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 self.task_repo.update(task_id, "failed", {"error": str(e)})
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @app.post("/api/v1/fetch", summary="Ansible Fetch 模块", dependencies=[Depends(self.auth.verify_api_key)])
+        @app.post(
+            "/api/v1/fetch",
+            summary="Ansible Fetch 模块",
+            dependencies=[Depends(self.auth.verify_api_key)],
+        )
         async def ansible_fetch(request: FetchRequest) -> Dict[str, Any]:
             credentials = (
                 request.credentials.model_dump(exclude_none=True)
@@ -873,7 +963,11 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 self.task_repo.update(task_id, "failed", {"error": str(e)})
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @app.get("/api/v1/playbooks", summary="列出 Playbook", dependencies=[Depends(self.auth.verify_api_key)])
+        @app.get(
+            "/api/v1/playbooks",
+            summary="列出 Playbook",
+            dependencies=[Depends(self.auth.verify_api_key)],
+        )
         async def list_playbooks() -> Dict[str, Any]:
             return self.executor.list_playbooks()
 
@@ -910,7 +1004,11 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 self.task_repo.update(task_id, "failed", {"error": str(e)})
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @app.post("/api/v1/inventory", summary="添加主机到 Inventory", dependencies=[Depends(self.auth.verify_api_key)])
+        @app.post(
+            "/api/v1/inventory",
+            summary="添加主机到 Inventory",
+            dependencies=[Depends(self.auth.verify_api_key)],
+        )
         async def add_inventory(request: AddInventoryRequest) -> Dict[str, Any]:
             credentials = (
                 request.credentials.model_dump(exclude_none=True)
@@ -925,11 +1023,19 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 private_key=credentials.get("private_key"),
             )
 
-        @app.get("/api/v1/inventory", summary="查询 Inventory", dependencies=[Depends(self.auth.verify_api_key)])
+        @app.get(
+            "/api/v1/inventory",
+            summary="查询 Inventory",
+            dependencies=[Depends(self.auth.verify_api_key)],
+        )
         async def list_inventory() -> Dict[str, Any]:
             return self.inventory_manager.list_hosts()
 
-        @app.delete("/api/v1/inventory/{host}", summary="从 Inventory 删除主机", dependencies=[Depends(self.auth.verify_api_key)])
+        @app.delete(
+            "/api/v1/inventory/{host}",
+            summary="从 Inventory 删除主机",
+            dependencies=[Depends(self.auth.verify_api_key)],
+        )
         async def remove_inventory(host: str) -> Dict[str, Any]:
             return self.inventory_manager.remove_host(host)
 
@@ -947,8 +1053,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @asynccontextmanager
         async def lifespan(app):
+            self.playbook_scanner.start_watching(self._on_playbook_changed)
             async with mcp_app.lifespan(app):
                 yield
+            self.playbook_scanner.stop_watching()
 
         self.app.router.lifespan_context = lifespan
 
@@ -985,7 +1093,9 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                         headers={"WWW-Authenticate": "Bearer"},
                     )
 
-                logger.info(f"MCP 端点认证成功: {request.url.path}, Token={token[:8]}...")
+                logger.info(
+                    f"MCP 端点认证成功: {request.url.path}, Token={token[:8]}..."
+                )
                 return await call_next(request)
 
         self.app.add_middleware(MCPAuthMiddleware)
