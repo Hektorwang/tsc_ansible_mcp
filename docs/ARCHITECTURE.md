@@ -127,7 +127,7 @@ all:
 | 发行版      | `cat /etc/os-release`                                                                                          |
 | bash 版本   | `bash --version \| head -1`                                                                                    |
 | tsc_tools   | `test -f /home/tsc/tsc_tools/release-note.md`                                                                  |
-| python 路径 | `(which python3 \|\| test -f /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3) \|\|echo "not_found"` |
+| python 路径 | `(command -v python3 \|\| test -x /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3) \|\|echo "not_found"` |
 
 ### 4.2 install_tsc_tools
 

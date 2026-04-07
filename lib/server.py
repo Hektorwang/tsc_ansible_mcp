@@ -8,13 +8,15 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
+from lib.auth import AuthMiddleware
 from lib.config import Config
-from lib.database import Database, TaskRepository
+from lib.database import Database, TaskRepository, ContextRepository
 from lib.executor import Executor
 from lib.inventory_manager import InventoryManager
 from lib.logger import get_logger
@@ -167,11 +169,13 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         db_path = base_dir / "logs" / "tsc_ansible_mcp.db"
         self.database = Database(db_path)
         self.task_repo = TaskRepository(self.database)
+        self.context_repo = ContextRepository(self.database)
         self.inventory_manager = InventoryManager()
         self.executor = Executor(self.config, self.inventory_manager)
+        self.auth = AuthMiddleware(self.config)
         self.mcp = FastMCP(
             name="tsc_ansible_mcp",
-            version="1.0.0",
+            version="1.3.0",
             instructions=self.MCP_INSTRUCTIONS,
         )
         self._register_mcp_tools()
@@ -234,9 +238,17 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @self.mcp.tool(
             name="install_python",
-            description="""在目标主机上安装 Python 环境。自动检测主机架构和发行版，下载对应的安装包进行安装。已安装的主机会跳过。
+            description="""在目标主机上安装 tsc_python 环境（独立的 Python 环境）。
 
-重要提示：安装 Python 前必须先安装 tsc_tools！如果 tsc_tools 未安装，请先调用 install_tsc_tools 工具。""",
+重要说明：
+- 此工具安装的是 tsc_python，不是系统 Python
+- 即使目标主机已有系统 Python，也可以安装 tsc_python
+- tsc_python 是独立的 Python 环境，不会影响系统 Python
+- 安装前必须先安装 tsc_tools！如果 tsc_tools 未安装，请先调用 install_tsc_tools 工具
+
+安装条件：
+- 如果 tsc_python 已安装 → 跳过安装
+- 如果 tsc_python 未安装 → 执行安装（无论是否有系统 Python）""",
         )
         def install_python(
             targets: List[str],
@@ -291,11 +303,18 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @self.mcp.tool(
             name="check_host_status",
-            description="""检查目标主机的状态，包括架构、发行版、Python 安装状态、tsc_tools 安装状态等。
+            description="""检查目标主机的状态，包括架构、发行版、Python 安装状态、tsc_python 安装状态、tsc_tools 安装状态等。
+
+返回字段说明：
+- python_installed: 是否有任何 Python（系统 Python 或 tsc_python）
+- tsc_python_installed: 是否已安装 tsc_python（独立环境）
+- python_path: Python 路径（可能是系统 Python 或 tsc_python）
+- python_version: Python 版本
+- tsc_tools_installed: 是否已安装 tsc_tools
 
 重要提示（安装顺序）：
 1. 如果 tsc_tools 未安装，请先调用 install_tsc_tools 工具进行安装
-2. 如果 Python 未安装，请在 tsc_tools 安装成功后，调用 install_python 工具进行安装
+2. 如果 tsc_python 未安装，请在 tsc_tools 安装成功后，调用 install_python 工具进行安装
 3. 安装顺序：tsc_tools -> tsc_python，不可颠倒
 
 注意：如果某个主机返回 error 字段（主机不可达），请勿对该主机执行后续操作！""",
@@ -570,6 +589,54 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 self.task_repo.update(task_id, "failed", {"error": str(e)})
                 return {"task_id": task_id, "status": "failed", "error": str(e)}
 
+        @self.mcp.tool(
+            name="set_context",
+            description="设置上下文键值对。用于在会话间持久化存储数据，例如保存配置、状态信息等。",
+        )
+        def set_context(key: str, value: str) -> Dict[str, str]:
+            logger.info(f"MCP 工具调用: set_context, key={key}")
+            self.context_repo.set(key, value)
+            return {"status": "success", "key": key, "value": value}
+
+        @self.mcp.tool(
+            name="get_context",
+            description="获取上下文值。通过键名获取之前存储的上下文数据。",
+        )
+        def get_context(key: str) -> Dict[str, Any]:
+            logger.info(f"MCP 工具调用: get_context, key={key}")
+            value = self.context_repo.get(key)
+            if value is not None:
+                return {"status": "success", "key": key, "value": value}
+            return {"status": "error", "message": f"上下文键不存在: {key}"}
+
+        @self.mcp.tool(
+            name="delete_context",
+            description="删除指定的上下文键值对。",
+        )
+        def delete_context(key: str) -> Dict[str, Any]:
+            logger.info(f"MCP 工具调用: delete_context, key={key}")
+            if self.context_repo.delete(key):
+                return {"status": "success", "message": f"已删除上下文键: {key}"}
+            return {"status": "error", "message": f"上下文键不存在: {key}"}
+
+        @self.mcp.tool(
+            name="list_contexts",
+            description="列出所有上下文键值对。返回当前存储的所有上下文数据。",
+        )
+        def list_contexts() -> Dict[str, Any]:
+            logger.info("MCP 工具调用: list_contexts")
+            contexts = self.context_repo.list()
+            return {"status": "success", "contexts": contexts, "count": len(contexts)}
+
+        @self.mcp.tool(
+            name="clear_contexts",
+            description="清空所有上下文数据。谨慎使用，此操作不可恢复。",
+        )
+        def clear_contexts() -> Dict[str, Any]:
+            logger.info("MCP 工具调用: clear_contexts")
+            count = self.context_repo.clear()
+            return {"status": "success", "message": f"已清空 {count} 条上下文数据"}
+
     def _create_fastapi_app(self) -> FastAPI:
         app = FastAPI(
             title="TSC_ANSIBLE_MCP API",
@@ -587,7 +654,11 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             )
 
         @app.post("/api/v1/shell", summary="执行 Shell 命令")
-        async def ansible_shell(request: ShellRequest) -> Dict[str, Any]:
+        async def ansible_shell(
+            request: ShellRequest,
+            credentials: HTTPAuthorizationCredentials = Depends(self.auth.security),
+            _: str = Depends(self.auth.verify_api_key),
+        ) -> Dict[str, Any]:
             credentials = (
                 request.credentials.model_dump(exclude_none=True)
                 if request.credentials
@@ -616,7 +687,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 raise HTTPException(status_code=500, detail=str(e))
 
         @app.get("/api/v1/executor/tasks/{task_id}", summary="查询任务状态")
-        async def get_task(task_id: str) -> Dict[str, Any]:
+        async def get_task(
+            task_id: str,
+            _: str = Depends(self.auth.verify_api_key),
+        ) -> Dict[str, Any]:
             task = self.task_repo.get(task_id)
             if task:
                 return task
@@ -624,7 +698,9 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @app.get("/api/v1/executor/tasks", summary="查询任务列表")
         async def list_tasks(
-            status_filter: Optional[str] = None, limit: int = 100
+            status_filter: Optional[str] = None,
+            limit: int = 100,
+            _: str = Depends(self.auth.verify_api_key),
         ) -> List[Dict[str, Any]]:
             return self.task_repo.list(status=status_filter, limit=limit)
 
@@ -734,7 +810,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 raise HTTPException(status_code=500, detail=str(e))
 
         @app.post("/api/v1/copy", summary="Ansible Copy 模块")
-        async def ansible_copy(request: CopyRequest) -> Dict[str, Any]:
+        async def ansible_copy(
+            request: CopyRequest,
+            _: str = Depends(self.auth.verify_api_key),
+        ) -> Dict[str, Any]:
             credentials = (
                 request.credentials.model_dump(exclude_none=True)
                 if request.credentials
@@ -763,7 +842,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 self.task_repo.update(task_id, "failed", {"error": str(e)})
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @app.post("/api/v1/fetch", summary="Ansible Fetch 模块")
+        @app.post("/api/v1/fetch", summary="Ansible Fetch 模块", dependencies=[Depends(self.auth.verify_api_key)])
         async def ansible_fetch(request: FetchRequest) -> Dict[str, Any]:
             credentials = (
                 request.credentials.model_dump(exclude_none=True)
@@ -794,12 +873,15 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 self.task_repo.update(task_id, "failed", {"error": str(e)})
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @app.get("/api/v1/playbooks", summary="列出 Playbook")
+        @app.get("/api/v1/playbooks", summary="列出 Playbook", dependencies=[Depends(self.auth.verify_api_key)])
         async def list_playbooks() -> Dict[str, Any]:
             return self.executor.list_playbooks()
 
         @app.post("/api/v1/playbooks/execute", summary="执行 Playbook")
-        async def execute_playbook(request: PlaybookRequest) -> Dict[str, Any]:
+        async def execute_playbook(
+            request: PlaybookRequest,
+            _: str = Depends(self.auth.verify_api_key),
+        ) -> Dict[str, Any]:
             credentials = (
                 request.credentials.model_dump(exclude_none=True)
                 if request.credentials
@@ -828,7 +910,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 self.task_repo.update(task_id, "failed", {"error": str(e)})
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @app.post("/api/v1/inventory", summary="添加主机到 Inventory")
+        @app.post("/api/v1/inventory", summary="添加主机到 Inventory", dependencies=[Depends(self.auth.verify_api_key)])
         async def add_inventory(request: AddInventoryRequest) -> Dict[str, Any]:
             credentials = (
                 request.credentials.model_dump(exclude_none=True)
@@ -843,11 +925,11 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 private_key=credentials.get("private_key"),
             )
 
-        @app.get("/api/v1/inventory", summary="查询 Inventory")
+        @app.get("/api/v1/inventory", summary="查询 Inventory", dependencies=[Depends(self.auth.verify_api_key)])
         async def list_inventory() -> Dict[str, Any]:
             return self.inventory_manager.list_hosts()
 
-        @app.delete("/api/v1/inventory/{host}", summary="从 Inventory 删除主机")
+        @app.delete("/api/v1/inventory/{host}", summary="从 Inventory 删除主机", dependencies=[Depends(self.auth.verify_api_key)])
         async def remove_inventory(host: str) -> Dict[str, Any]:
             return self.inventory_manager.remove_host(host)
 
@@ -861,6 +943,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         """获取 ASGI 应用，挂载 MCP 到 FastAPI"""
         mcp_app = self.mcp.http_app(path="/mcp", transport="streamable-http")
         from contextlib import asynccontextmanager
+        from starlette.middleware.base import BaseHTTPMiddleware
 
         @asynccontextmanager
         async def lifespan(app):
@@ -868,5 +951,43 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 yield
 
         self.app.router.lifespan_context = lifespan
+
+        auth_instance = self.auth
+
+        class MCPAuthMiddleware(BaseHTTPMiddleware):
+            """MCP 端点认证中间件"""
+
+            async def dispatch(self, request, call_next):
+                if not request.url.path.startswith("/mcp"):
+                    return await call_next(request)
+
+                if not auth_instance.enabled:
+                    return await call_next(request)
+
+                authorization = request.headers.get("Authorization")
+                if not authorization or not authorization.startswith("Bearer "):
+                    logger.warning(f"MCP 端点认证失败: {request.url.path}")
+                    return JSONResponse(
+                        status_code=401,
+                        content={
+                            "status": "error",
+                            "message": "Bearer Token required for MCP endpoints",
+                        },
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+                token = authorization.split(" ", 1)[1]
+                if token not in auth_instance.api_keys:
+                    logger.warning(f"MCP 端点无效 Token: {token[:8]}...")
+                    return JSONResponse(
+                        status_code=401,
+                        content={"status": "error", "message": "Invalid Bearer Token"},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+                logger.info(f"MCP 端点认证成功: {request.url.path}, Token={token[:8]}...")
+                return await call_next(request)
+
+        self.app.add_middleware(MCPAuthMiddleware)
         self.app.mount("/", mcp_app)
         return self.app

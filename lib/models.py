@@ -35,3 +35,22 @@ class Task(Base):
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
+
+
+class Context(Base):
+    """持久化上下文模型"""
+
+    __tablename__ = "context"
+
+    key = Column(String(255), primary_key=True)
+    value = Column(Text, nullable=False)
+    created_at = Column(String(30), nullable=False)
+    updated_at = Column(String(30), nullable=False)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "key": self.key,
+            "value": self.value,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }

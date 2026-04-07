@@ -1,4 +1,4 @@
-# TSC\_ANSIBLE\_MCP 产品需求文档
+# TSC_ANSIBLE_MCP 产品需求文档
 
 ## 1. 产品概述
 
@@ -48,19 +48,54 @@
 
 - 高危指令黑名单预拦截(`rm -rf /` 等)
 
+### 2.7 API 认证
+
+#### 2.7.1 认证机制
+
+- 支持标准的 HTTP Bearer Token 认证
+- Token 存储在独立文件 `etc/tokens.txt` 中，不暴露在主配置文件
+- 认证开关可通过配置文件灵活控制
+- 支持多个有效 Token，便于管理和轮换
+
+#### 2.7.2 认证范围
+
+- 所有 REST API 端点需要认证（健康检查除外）
+- 所有 MCP 端点需要认证
+- API 文档端点（`/docs`, `/redoc`）无需认证
+
+#### 2.7.3 Token 管理
+
+- 使用加密安全的随机数生成器生成 Token
+- Token 格式：`sk-{random_string}`（建议长度 32 字符）
+- 提供生成工具 `bin/generate_api_key.py`
+- Token 文件每行一个，支持注释（以 # 开头）
+- `etc/tokens.txt` 添加到 `.gitignore`，不提交到版本控制
+
+#### 2.7.4 认证失败响应
+
+- Token 缺失：返回 HTTP 401，提示需要 Bearer Token
+- Token 无效：返回 HTTP 401，提示 Token 无效
+- 响应包含 `WWW-Authenticate: Bearer` 头
+
+#### 2.7.5 审计日志
+
+- 记录所有认证尝试（成功和失败）
+- 记录客户端 IP 和 Token 前缀（前 8 位）
+- 记录请求路径和认证结果
+
 ## 3. MCP 工具列表
 
-| 工具名称             | 功能描述                                                       | 对应 ansible 功能 |
-| -------------------- | ---------------------------------------------------------- | ------------- |
-| `check_host_status`  | 检查主机状态(架构, 发行版, Python, tsc_tools)                  | raw           |
-| `install_tsc_tools`  | 安装 `tsc_tools` 环境                                          | raw           |
-| `install_python`     | 安装 `tsc_python` 环境                                         | raw           |
-| `ansible_shell`      | 执行远程 Shell 命令                                            | shell         |
-| `ansible_copy`       | 调用 ansible copy 模块，分发文件到远程主机                       | copy          |
-| `ansible_fetch`      | 调用 ansible fetch 模块，从远程主机获取文件                      | fetch         |
-| `list_playbooks`     | 列出可用的 playbook 文件，包含元数据说明                         | -             |
-| `ansible_playbook`   | 执行 playbook 文件                                            | ansible-playbook |
-| `get_task_status`    | 查询任务状态                                                   | 无            |
+| 工具名称            | 功能描述                                      | 对应 ansible 功能 |
+| ------------------- | --------------------------------------------- | ----------------- |
+| `check_host_status` | 检查主机状态(架构, 发行版, Python, tsc_tools) | raw               |
+| `install_tsc_tools` | 安装 `tsc_tools` 环境                         | raw               |
+| `install_python`    | 安装 `tsc_python` 环境                        | raw               |
+| `ansible_shell`     | 执行远程 Shell 命令                           | shell             |
+| `ansible_copy`      | 调用 ansible copy 模块，分发文件到远程主机    | copy              |
+| `ansible_fetch`     | 调用 ansible fetch 模块，从远程主机获取文件   | fetch             |
+| `list_playbooks`    | 列出可用的 playbook 文件，包含元数据说明      | -                 |
+| `ansible_playbook`  | 执行 playbook 文件                            | ansible-playbook  |
+| `get_task_status`   | 查询任务状态                                  | 无                |
 
 ## 4. Playbook 元数据规范
 
@@ -86,13 +121,13 @@
 
 ### 4.2 元数据字段说明
 
-| 字段          | 必填 | 说明                           |
-| ------------- | ---- | ------------------------------ |
-| @description  | 是   | playbook 功能描述，供 LLM 理解 |
-| @author       | 否   | 作者信息                       |
-| @version      | 否   | playbook 版本号                |
-| @tags         | 否   | 标签，便于分类和搜索           |
-| @parameters   | 否   | 可传入的参数说明               |
+| 字段         | 必填 | 说明                           |
+| ------------ | ---- | ------------------------------ |
+| @description | 是   | playbook 功能描述，供 LLM 理解 |
+| @author      | 否   | 作者信息                       |
+| @version     | 否   | playbook 版本号                |
+| @tags        | 否   | 标签，便于分类和搜索           |
+| @parameters  | 否   | 可传入的参数说明               |
 
 ### 4.3 list_playbooks 返回格式
 
@@ -107,8 +142,16 @@
       "version": "1.0.0",
       "tags": ["nginx", "web", "install"],
       "parameters": [
-        {"name": "nginx_version", "description": "Nginx 版本号", "default": "1.24.0"},
-        {"name": "nginx_port", "description": "Nginx 监听端口", "default": "80"}
+        {
+          "name": "nginx_version",
+          "description": "Nginx 版本号",
+          "default": "1.24.0"
+        },
+        {
+          "name": "nginx_port",
+          "description": "Nginx 监听端口",
+          "default": "80"
+        }
       ]
     }
   ]
@@ -132,5 +175,5 @@
 - [API 参考文档](./API-REFERENCE.md)
 - [技术规格说明](./SPEC.md)
 - [Agent 使用指南](./AGENT.md)
+- [认证使用指南](./AUTH-GUIDE.md)
 - [开发任务清单](./TODO.md)
-

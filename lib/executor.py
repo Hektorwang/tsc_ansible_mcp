@@ -33,17 +33,33 @@ class Executor:
         self,
         targets: List[str],
         credentials: Optional[Dict[str, Any]] = None,
+        use_cached: bool = False,
     ) -> Dict[str, Any]:
+        """构建 Ansible inventory
+        
+        Args:
+            targets: 目标主机列表
+            credentials: LLM 提供的凭据信息
+            use_cached: 是否强制使用缓存的 inventory（用于 fallback）
+        
+        Returns:
+            Ansible inventory 字典
+        """
         inventory = {"all": {"hosts": {}}}
         for target in targets:
             host_data: Dict[str, Any] = {
                 "ansible_host": target,
                 "ansible_ssh_common_args": "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no",
             }
+            
             cached_host = self.inventory_manager.get_host(target)
-            if cached_host:
+            
+            if use_cached and cached_host:
                 host_data.update(cached_host)
-            if credentials:
+                logger.info(f"使用缓存的 inventory 信息: {target}")
+                if "ansible_python_interpreter" in cached_host:
+                    logger.info(f"使用缓存的 Python 解释器: {cached_host['ansible_python_interpreter']}")
+            elif credentials:
                 if "user" in credentials:
                     host_data["ansible_user"] = credentials["user"]
                 if "port" in credentials:
@@ -57,8 +73,11 @@ class Executor:
                     host_data["ansible_ssh_common_args"] = (
                         "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
                     )
+                logger.debug(f"使用 LLM 提供的凭据: {target}")
             elif cached_host:
                 host_data.update(cached_host)
+                logger.debug(f"使用缓存的 inventory 信息（无新凭据）: {target}")
+            
             inventory["all"]["hosts"][target] = host_data
         return inventory
 
@@ -98,6 +117,61 @@ class Executor:
         if elapsed_match:
             result["elapsed"] = f"{elapsed_match.group(1)}s"
         return result
+
+    def _test_connectivity(
+        self,
+        targets: List[str],
+        inventory: Dict[str, Any],
+        timeout: Optional[int] = None,
+    ) -> Dict[str, bool]:
+        """测试主机连接性
+        
+        Args:
+            targets: 目标主机列表
+            inventory: Ansible inventory
+            timeout: 超时时间
+        
+        Returns:
+            字典，键为主机名，值为是否可连接
+        """
+        logger.info(f"测试主机连接性: {targets}")
+        
+        playbook = [
+            {
+                "name": "Test connectivity",
+                "hosts": "all",
+                "gather_facts": False,
+                "tasks": [
+                    {
+                        "name": "Ping test",
+                        "ansible.builtin.raw": "echo 'connection_ok'",
+                        "register": "ping_result",
+                        "changed_when": False,
+                    }
+                ],
+            }
+        ]
+        
+        result = self._run_ansible(playbook, inventory, timeout)
+        
+        connectivity = {}
+        for host in targets:
+            connectivity[host] = False
+        
+        for event in result.events:
+            event_type = event.get("event", "")
+            if event_type == "runner_on_ok":
+                host = event.get("event_data", {}).get("host", "")
+                if host in connectivity:
+                    connectivity[host] = True
+                    logger.info(f"主机 {host} 连接测试成功")
+            elif event_type in ["runner_on_failed", "runner_on_unreachable"]:
+                host = event.get("event_data", {}).get("host", "")
+                if host in connectivity:
+                    connectivity[host] = False
+                    logger.warning(f"主机 {host} 连接测试失败")
+        
+        return connectivity
 
     def _parse_result(self, result: Any, hosts: List[str]) -> Dict[str, Dict[str, Any]]:
         results = {}
@@ -145,19 +219,41 @@ class Executor:
     ) -> Dict[str, Any]:
         logger.info(f"检查主机状态: {targets}")
         logger.debug(f"凭据信息: user={credentials.get('user') if credentials else None}, port={credentials.get('port') if credentials else None}")
+        
+        install_path = self.config.tsc_tools_install_path
+        
         if credentials:
-            for target in targets:
-                self.inventory_manager.add_host(
-                    host=target,
+            logger.info("使用 LLM 提供的凭据测试连接...")
+            inventory = self._build_inventory(targets, credentials, use_cached=False)
+            test_result = self._test_connectivity(targets, inventory, timeout)
+            
+            failed_hosts = [host for host, success in test_result.items() if not success]
+            success_hosts = [host for host, success in test_result.items() if success]
+            
+            if failed_hosts:
+                logger.warning(f"LLM 凭据连接失败的主机: {failed_hosts}")
+                cached_inventory = self._build_inventory(targets, credentials=None, use_cached=True)
+                cached_test_result = self._test_connectivity(targets, cached_inventory, timeout)
+                
+                for host in failed_hosts:
+                    if cached_test_result.get(host, False):
+                        logger.info(f"主机 {host} 使用缓存凭据连接成功，将使用缓存信息")
+                    else:
+                        logger.warning(f"主机 {host} 缓存凭据也连接失败")
+            
+            for host in success_hosts:
+                self.inventory_manager.update_host_credentials(
+                    host=host,
                     user=credentials.get("user"),
                     port=credentials.get("port"),
                     password=credentials.get("password"),
                     private_key=credentials.get("private_key"),
                 )
-                logger.debug(f"已添加主机 {target} 到 Inventory")
-        install_path = self.config.tsc_tools_install_path
-        inventory = self._build_inventory(targets, credentials)
-        logger.debug(f"构建的 inventory: {inventory}")
+                logger.info(f"主机 {host} 验证成功，已更新 inventory")
+        
+        inventory = self._build_inventory(targets, credentials=None, use_cached=True)
+        logger.debug(f"最终使用的 inventory: {inventory}")
+        
         playbook = [
             {
                 "name": "Check host status",
@@ -179,14 +275,14 @@ class Executor:
                     },
                     {
                         "name": "Check Python3",
-                        "ansible.builtin.raw": f"test -x {install_path}/micromamba/envs/tsc_python/bin/python3 && echo '{install_path}/micromamba/envs/tsc_python/bin/python3' || (which python3 2>/dev/null | head -n 1 || echo 'not_found')",
+                        "ansible.builtin.raw": f"if test -x {install_path}/micromamba/envs/tsc_python/bin/python3; then echo '{install_path}/micromamba/envs/tsc_python/bin/python3'; elif command -v python3 >/dev/null 2>&1; then command -v python3; else echo 'not_found'; fi",
                         "register": "python_check",
                         "changed_when": False,
                         "failed_when": False,
                     },
                     {
                         "name": "Get Python version",
-                        "ansible.builtin.raw": f"python3 --version 2>/dev/null || {install_path}/micromamba/envs/tsc_python/bin/python3 --version 2>/dev/null || echo 'not_installed'",
+                        "ansible.builtin.raw": f"if test -x {install_path}/micromamba/envs/tsc_python/bin/python3; then {install_path}/micromamba/envs/tsc_python/bin/python3 --version 2>/dev/null; elif command -v python3 >/dev/null 2>&1; then python3 --version 2>/dev/null; else echo 'not_installed'; fi",
                         "register": "python_version",
                         "changed_when": False,
                         "failed_when": False,
@@ -213,6 +309,7 @@ class Executor:
                 "python_installed": False,
                 "python_version": "",
                 "python_path": "",
+                "tsc_python_installed": False,
                 "tsc_tools_installed": False,
             }
         for event in result.events:
@@ -248,20 +345,23 @@ class Executor:
                     elif "Check Python3" in task:
                         python_path = res.get("stdout", "").strip()
                         results[host]["python_installed"] = (
-                            "not_found" not in python_path
+                            python_path and "not_found" not in python_path
                         )
                         if results[host]["python_installed"]:
                             results[host]["python_path"] = python_path
+                            tsc_python_path = f"{install_path}/micromamba/envs/tsc_python/bin/python3"
+                            results[host]["tsc_python_installed"] = (python_path == tsc_python_path)
                             self.inventory_manager.update_python_interpreter(
                                 host, python_path
                             )
                             logger.info(f"主机 {host} Python 路径: {python_path}")
+                            logger.info(f"主机 {host} tsc_python: {'已安装' if results[host]['tsc_python_installed'] else '未安装'}")
                         else:
                             logger.info(f"主机 {host} Python 未安装")
                     elif "Get Python version" in task:
                         version = res.get("stdout", "").strip()
                         results[host]["python_version"] = (
-                            version if "not_installed" not in version else ""
+                            version if version and "not_installed" not in version else ""
                         )
                         if results[host]["python_version"]:
                             logger.info(f"主机 {host} Python 版本: {results[host]['python_version']}")
@@ -311,14 +411,15 @@ class Executor:
                     "error": env_info.get("error"),
                 }
                 logger.warning(f"主机 {host} 不可达，跳过安装")
-            elif env_info.get("python_installed"):
+            elif env_info.get("tsc_python_installed"):
                 results[host] = {
                     "installed": False,
                     "skipped": True,
-                    "message": "Python 已安装",
+                    "message": "tsc_python 已安装",
                     "python_version": env_info.get("python_version", ""),
+                    "python_path": env_info.get("python_path", ""),
                 }
-                logger.info(f"主机 {host} Python 已安装，跳过")
+                logger.info(f"主机 {host} tsc_python 已安装，跳过")
         hosts_need_install = [h for h in targets if h not in results]
         if not hosts_need_install:
             return {"task_id": str(uuid.uuid4()), "results": results}
@@ -696,7 +797,7 @@ class Executor:
                         for host in targets
                     },
                 }
-        inventory = self._build_inventory(targets, credentials)
+        inventory = self._build_inventory(targets, credentials=None, use_cached=True)
         playbook = [
             {
                 "name": "Dispatch file",
@@ -789,7 +890,7 @@ class Executor:
             "elapsed": f"{elapsed:.2f}s",
         }
 
-    def execute_command(
+    def ansible_shell(
         self,
         targets: List[str],
         command: str,
@@ -880,7 +981,7 @@ class Executor:
                     },
                 }
 
-        inventory = self._build_inventory(targets, credentials)
+        inventory = self._build_inventory(targets, credentials=None, use_cached=True)
         playbook = [
             {
                 "name": "Execute command",
@@ -943,32 +1044,132 @@ echo "ELAPSED_TIME:$elapsed"
         }
         try:
             content = playbook_path.read_text(encoding="utf-8")
+            
+            json_metadata = self._extract_json_metadata(content)
+            if json_metadata:
+                metadata.update(json_metadata)
+                return metadata
+            
+            in_description = False
+            description_lines = []
+            
             for line in content.split("\n"):
-                line = line.strip()
-                if line.startswith("# @description:"):
-                    metadata["description"] = line.split(":", 1)[1].strip()
-                elif line.startswith("# @author:"):
-                    metadata["author"] = line.split(":", 1)[1].strip()
-                elif line.startswith("# @version:"):
-                    metadata["version"] = line.split(":", 1)[1].strip()
-                elif line.startswith("# @tags:"):
-                    tags_str = line.split(":", 1)[1].strip()
-                    metadata["tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
-                elif line.startswith("# @parameters:"):
-                    pass
-                elif line.startswith("#   -"):
-                    param_line = line[2:].strip()
-                    if ":" in param_line:
-                        param_name, param_desc = param_line.split(":", 1)
-                        metadata["parameters"].append({
-                            "name": param_name.strip(),
-                            "description": param_desc.strip(),
-                        })
-                if line.startswith("---"):
+                stripped = line.strip()
+                
+                if stripped.startswith("---"):
                     break
+                
+                if not stripped.startswith("#"):
+                    continue
+                
+                comment = stripped[1:].strip()
+                
+                if comment.startswith("@description:"):
+                    metadata["description"] = comment.split(":", 1)[1].strip()
+                elif comment.startswith("Description:"):
+                    in_description = True
+                    desc_content = comment.split(":", 1)[1].strip()
+                    if desc_content:
+                        description_lines.append(desc_content)
+                elif in_description:
+                    if comment and not comment.startswith(("Author:", "Version:", "Tags:", "Parameters:", "Use Cases:", "Example:", "Notes:", "Playbook:")):
+                        description_lines.append(comment)
+                    else:
+                        in_description = False
+                        if description_lines:
+                            metadata["description"] = " ".join(description_lines)
+                
+                if comment.startswith("@author:"):
+                    metadata["author"] = comment.split(":", 1)[1].strip()
+                elif comment.startswith("Author:"):
+                    metadata["author"] = comment.split(":", 1)[1].strip()
+                
+                if comment.startswith("@version:"):
+                    metadata["version"] = comment.split(":", 1)[1].strip()
+                elif comment.startswith("Version:"):
+                    metadata["version"] = comment.split(":", 1)[1].strip()
+                
+                if comment.startswith("@tags:"):
+                    tags_str = comment.split(":", 1)[1].strip()
+                    metadata["tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
+                elif comment.startswith("Tags:"):
+                    tags_str = comment.split(":", 1)[1].strip()
+                    metadata["tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
+                
+                if comment.startswith("@parameters:"):
+                    pass
+                elif comment.startswith("Parameters:"):
+                    pass
+                else:
+                    param_line = comment.lstrip("-").strip()
+                    if param_line and "(" in param_line and ":" in param_line:
+                        param_match = re.match(r'(\w+)\s*\((\w+)\):\s*(.+)', param_line)
+                        if param_match:
+                            metadata["parameters"].append({
+                                "name": param_match.group(1),
+                                "type": param_match.group(2),
+                                "description": param_match.group(3),
+                            })
+                    elif param_line and ":" in param_line:
+                        parts = param_line.split(":", 1)
+                        if len(parts) == 2:
+                            param_name = parts[0].strip()
+                            param_desc = parts[1].strip()
+                            if param_name and not param_name.startswith(("Use", "Example", "Notes", "Playbook", "Description", "Author", "Version", "Tags")):
+                                metadata["parameters"].append({
+                                    "name": param_name,
+                                    "description": param_desc,
+                                })
+            
+            if description_lines and not metadata["description"]:
+                metadata["description"] = " ".join(description_lines)
+                
         except Exception as e:
             logger.warning(f"解析 playbook 元数据失败: {playbook_path}, 错误: {e}")
         return metadata
+
+    def _extract_json_metadata(self, content: str) -> Optional[Dict[str, Any]]:
+        """从注释中提取 JSON 格式的元数据"""
+        try:
+            json_lines = []
+            in_meta = False
+            
+            for line in content.split("\n"):
+                stripped = line.strip()
+                
+                if stripped.startswith("# @meta:"):
+                    in_meta = True
+                    json_start = stripped[8:].strip()
+                    if json_start:
+                        json_lines.append(json_start)
+                    continue
+                
+                if in_meta:
+                    if stripped.startswith("#"):
+                        json_line = stripped[1:].strip()
+                        json_lines.append(json_line)
+                    elif stripped.startswith("---"):
+                        break
+            
+            if not json_lines:
+                return None
+            
+            json_str = "\n".join(json_lines)
+            metadata = json.loads(json_str)
+            
+            if "parameters" in metadata:
+                for param in metadata["parameters"]:
+                    if "default" in param:
+                        param["description"] = f"{param.get('description', '')} (default: {param['default']})"
+            
+            return metadata
+            
+        except json.JSONDecodeError as e:
+            logger.debug(f"JSON 元数据解析失败: {e}")
+            return None
+        except Exception as e:
+            logger.debug(f"提取 JSON 元数据失败: {e}")
+            return None
 
     def list_playbooks(self) -> Dict[str, Any]:
         playbooks_dir = self.config.playbooks_path
@@ -1054,7 +1255,7 @@ echo "ELAPSED_TIME:$elapsed"
                         for host in targets
                     },
                 }
-        inventory = self._build_inventory(targets, credentials)
+        inventory = self._build_inventory(targets, credentials=None, use_cached=True)
         timeout = min(timeout or self.config.default_timeout, self.config.max_timeout)
         start_time = time.time()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1207,7 +1408,7 @@ echo "ELAPSED_TIME:$elapsed"
                         for host in targets
                     },
                 }
-        inventory = self._build_inventory(targets, credentials)
+        inventory = self._build_inventory(targets, credentials=None, use_cached=True)
         playbook = [
             {
                 "name": "Fetch file",
@@ -1280,5 +1481,4 @@ echo "ELAPSED_TIME:$elapsed"
             "elapsed": f"{elapsed:.2f}s",
         }
 
-    ansible_shell = execute_command
     ansible_copy = dispatch_file

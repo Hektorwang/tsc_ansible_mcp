@@ -56,3 +56,7 @@ path = "playbooks"
 [logging]
 dir = "logs"
 level = "INFO"
+
+[auth]
+enabled = true
+tokens_file = "etc/tokens.txt"

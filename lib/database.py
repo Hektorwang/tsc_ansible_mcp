@@ -14,7 +14,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from lib.logger import get_logger
-from lib.models import Base, Task
+from lib.models import Base, Task, Context
 
 logger = get_logger()
 
@@ -26,7 +26,17 @@ class Database:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         db_url = f"sqlite:///{self.db_path}"
-        self.engine = create_engine(db_url, echo=False)
+        # 优化 SQLite 并发配置
+        self.engine = create_engine(
+            db_url,
+            echo=False,
+            connect_args={
+                "check_same_thread": False,  # 允许多线程访问
+                "timeout": 30,  # 增加超时时间（秒）
+            },
+            pool_pre_ping=True,  # 检查连接是否有效
+            pool_recycle=3600,  # 每小时回收连接
+        )
         self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False)
         self._init_db()
         logger.info(f"数据库初始化完成: {self.db_path}")
@@ -186,3 +196,63 @@ class TaskRepository:
             "failed": failed,
             "partial_success": partial_success,
         }
+
+
+class ContextRepository:
+    """持久化上下文仓库类"""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def set(self, key: str, value: str) -> None:
+        """设置上下文"""
+        now = datetime.now().isoformat()
+        with self.db.get_session() as session:
+            context = session.query(Context).filter(Context.key == key).first()
+            if context:
+                context.value = value
+                context.updated_at = now
+            else:
+                context = Context(
+                    key=key,
+                    value=value,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(context)
+        logger.info(f"设置上下文: {key} = {value}")
+
+    def get(self, key: str) -> Optional[str]:
+        """获取上下文"""
+        with self.db.get_session() as session:
+            context = session.query(Context).filter(Context.key == key).first()
+            if context:
+                logger.debug(f"获取上下文: {key} = {context.value}")
+                return context.value
+            logger.debug(f"上下文不存在: {key}")
+            return None
+
+    def delete(self, key: str) -> bool:
+        """删除上下文"""
+        with self.db.get_session() as session:
+            context = session.query(Context).filter(Context.key == key).first()
+            if context:
+                session.delete(context)
+                logger.info(f"删除上下文: {key}")
+                return True
+            return False
+
+    def list(self) -> Dict[str, str]:
+        """列出所有上下文"""
+        with self.db.get_session() as session:
+            contexts = session.query(Context).all()
+            result = {ctx.key: ctx.value for ctx in contexts}
+            logger.debug(f"列出上下文: {len(result)} 条")
+            return result
+
+    def clear(self) -> int:
+        """清空所有上下文"""
+        with self.db.get_session() as session:
+            count = session.query(Context).delete()
+            logger.info(f"清空上下文: 删除 {count} 条")
+            return count

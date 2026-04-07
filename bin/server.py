@@ -9,7 +9,11 @@ import sys
 from pathlib import Path
 import uvicorn
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+project_root = str(Path(__file__).parent.parent)
+if sys.path and sys.path[0] != project_root:
+    if project_root in sys.path:
+        sys.path.remove(project_root)
+    sys.path.insert(0, project_root)
 
 
 from lib.config import Config
@@ -22,7 +26,7 @@ logger = get_logger()
 def main():
     config = Config()
     setup_logger()
-    logger.info("启动 TSC_ANSIBLE_MCP 统一服务")
+    logger.info("启动 TSC_ANSIBLE_MCP 服务")
     logger.info(f"MCP 端点: http://{config.mcp_host}:{config.mcp_port}/mcp")
     logger.info(f"REST API 文档: http://{config.mcp_host}:{config.mcp_port}/docs")
 

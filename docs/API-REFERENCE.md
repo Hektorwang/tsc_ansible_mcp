@@ -728,6 +728,83 @@ MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 RE
 Content-Type: application/json
 ```
 
+### 5.2 认证请求头
+
+所有 API 请求（除了健康检查端点）必须在请求头中携带 Bearer Token：
+
+```http
+Authorization: Bearer sk-tsc-ansible-mcp-2026
+```
+
+**认证说明**：
+
+- 认证功能可通过配置文件启用或禁用（`auth.enabled`）
+- 使用标准的 HTTP Bearer Token 认证方式
+- Token 在配置文件 `etc/tsc_ansible_mcp.toml` 中配置
+- 可配置多个有效的 Token
+- 可选配置 IP 白名单进行双重保护
+
+**示例请求**：
+
+```bash
+# 使用 curl 发送带认证的请求
+curl -X POST http://localhost:8500/api/v1/shell \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
+  -d '{
+    "targets": ["192.168.1.100"],
+    "command": "ls -la"
+  }'
+```
+
+**认证失败响应**：
+
+```json
+{
+  "status": "error",
+  "message": "Bearer Token required. Please provide Authorization: Bearer <token> header."
+}
+```
+
+或
+
+```json
+{
+  "status": "error",
+  "message": "Invalid Bearer Token"
+}
+```
+
+**生成 Token**：
+
+使用提供的工具生成安全的 Token：
+
+```bash
+python bin/generate_api_key.py
+```
+
+**配置示例**：
+
+```toml
+# etc/tsc_ansible_mcp.toml
+[auth]
+enabled = true
+tokens_file = "etc/tokens.txt"
+whitelist_ips = ["127.0.0.1", "192.168.19.0/24"]
+```
+
+**Tokens 文件**：
+
+创建 `etc/tokens.txt`（参考 `etc/tokens.txt.example`）：
+
+```
+# 每行一个 token
+sk-tsc-ansible-mcp-2026-production
+sk-tsc-ansible-mcp-2026-dev
+```
+
+**注意**：`etc/tokens.txt` 已添加到 `.gitignore`，不会被提交到 git。
+
 ## 6. 响应格式说明
 
 ### 6.1 成功响应

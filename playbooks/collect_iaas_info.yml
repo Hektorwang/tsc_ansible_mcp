@@ -1,0 +1,60 @@
+# @meta: {
+#   "description": "Collect IaaS layer infrastructure information including CPU, memory, storage (RAID), OS, and package manager details",
+#   "author": "tsc",
+#   "version": "1.1.1",
+#   "tags": ["iaas", "infrastructure", "info", "hardware"],
+#   "parameters": [
+#     {
+#       "name": "runtime",
+#       "type": "bool",
+#       "default": false,
+#       "description": "Collect current hardware resource usage status"
+#     }
+#   ],
+#   "use_cases": [
+#     "Collect infrastructure hardware information",
+#     "Check CPU, memory, and storage details",
+#     "Get RAID configuration information",
+#     "View OS and package manager details",
+#     "Monitor current resource usage (with --runtime)"
+#   ],
+#   "example": {
+#     "playbook": "collect_iaas_info.yml",
+#     "targets": ["192.168.1.10"],
+#     "extravars": {
+#       "runtime": true
+#     },
+#     "user": "root",
+#     "password": "your_password"
+#   },
+#   "notes": [
+#     "Requires tsc_tools to be installed on target hosts",
+#     "Source profile: /home/tsc/tsc_profile",
+#     "Command: tsc --tsc_iaas_info [--runtime]"
+#   ]
+# }
+---
+- name: Collect IaaS infrastructure information
+  hosts: all
+  gather_facts: false
+  vars:
+    runtime: false
+
+  tasks:
+    - name: Collect IaaS information
+      ansible.builtin.shell: |
+        source /home/tsc/tsc_profile
+        {% if runtime %}
+        tsc --tsc_iaas_info --runtime | jq . -rc
+        {% else %}
+        tsc --tsc_iaas_info | jq . -rc
+        {% endif %}
+      args:
+        executable: /bin/bash
+      register: iaas_info
+      changed_when: false
+      failed_when: iaas_info.rc != 0
+
+    - name: Display IaaS information
+      ansible.builtin.debug:
+        msg: "{{ iaas_info.stdout }}"

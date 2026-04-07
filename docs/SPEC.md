@@ -4,45 +4,49 @@
 
 ### 1.1 运行环境
 
-- `python` 版本: `3.13`
+- `python` 版本: `3.13`, 提供虚环境在项目根目录下 `venv`
 - 本地 `bash` 版本: `5+`
 - 目标主机 `bash` 版本: `4+`
 
 ### 1.2 必须
 
-- 必须使用`半角`标点符号
+- 所有文档和代码必须使用`半角`标点符号
 - python 必须`面向对象`
-- 必须使用 `pathlib` 标准库操作路径
-- 必须使用 `loguru` 管理日志, 在 `lib` 下封装日志模块 `tsc_logger.py`
+- python 必须使用 `pathlib` 标准库操作路径
+- python 必须使用 `loguru` 管理日志, 在 `lib` 下封装日志模块 `tsc_logger.py`
 - 数据库管理必须使用 `orm`
 - 若有 api 接口必须提供 `swagger`
-- `requests` 必须使用 `session`
+- python `requests` 必须使用 `session`
 - `mcp` 必须对工具提供 `instruction`
-- 读取 `yaml` 必须使用 `yaml.safe_load()` 或 `yaml.safe_load_all()`
-- python, typescript 必须使用 Docstrings
+- python 读取 `yaml` 必须使用 `yaml.safe_load()` 或 `yaml.safe_load_all()`
+- python 必须使用 Docstrings(google 风格)
 - javascript 必须使用 JSDoc
+- shell 必须使用函数注释(google 风格)
 - python 必须使用 type hint
+- 必须在项目根目录下放置 `README.md` 文件描述本项目的功能、安装、配置、使用等
+- 必须在项目根目录下放置 `release-note.md` 描述本项目的版本变更, 以及在第三行使用 `## Version=1.3.0` 标识当前版本
 
 ### 1.3 优先选择
 
-- 重型项目后端优选 `django`, 轻型项目后端优选 `fastapi`
+- python 重型项目后端优选 `django`, 轻型项目后端优选 `fastapi`
 - 接口选择: `restful` > `rpc`, `异步` > `同步`
-- 优先选择使用 `sqlalchemy` + `pandas` 操作数据库
-- 配置文件格式优先选择顺序: `toml` > `ini` > `yaml` > `json` > `python dict`
+- python 优先选择使用 `sqlalchemy` + `pandas` 操作数据库
+- python 配置文件格式优先选择顺序: `toml` > `ini` > `yaml` > `json` > `python dict`
 - `MCP` 服务优先选择 `Streamable HTTP` > `SSE`
 - python 和 shell 优先选择不用 `eval` 的方式, 若要用, **必须**提示我人工确认该语句
 - 非必须双向交互场景不考虑 `websocket`
 
 ### 1.4 禁止
 
-- 禁止使用 `emoji`
-- 禁止画 `ascii文字图`, 若有必要用 `mermaid` 流程图语法
+- 所有文档和代码禁止使用 `emoji`
+- 所有文档和代码禁止画 `ascii文字图`, 若有必要用 `mermaid` 流程图语法
 - python 禁止`面向过程`
-- 数据库管理禁止使用`裸sql`
+- 数据库管理和操作禁止使用`裸sql`
 - python 禁止使用 `pickle`
-- 禁止使用 `os.path`
+- python 禁止使用 `os.path`
 - 禁止使用 `typescript`
 - 禁止使用`全角`标点符号
+- shell 禁止使用 多重 `||`, `&&` 复合语句, 需使用 `if else elif`
 
 ### 1.5 代码格式化及校验(若无法通过校验, 提示我人工处理)
 
@@ -52,24 +56,26 @@
 - shell 脚本通过 `dev_tools/shfmt` 格式化
 - shell 脚本通过 `dev_tools/shellcheck` 校验
 - ansible 剧本通过 `ansible-lint` 校验
-- js 通过 `eslint` 校验
+- javascript 通过 `eslint(google 风格)` 校验
 
 ## 2. 路径约束
 
 - `venv/`: 本工具 `python` 虚环境
 - `bin/`: 本工具脚本, 可执行文件
-- `doc/`: 设计文档
+- `docs/`: 设计文档
 - `tmp`: 临时文件
 - `logs/`: 日志文件
 - `lib/`: 库/包文件
 - `test/`: 测试文件
-- `dev_tools/`: 开发辅助工具, 如
+- `dev_tools/`: 开发辅助工具, 如 `shfmt`, `shellcheck`
 - `roles`, `playbooks/`, `retries`, `ansible.cfg`: ansible 相关文件路径
 - `pylintrc`: `pylint` 配置文件
 - `pyproject.toml`: `mypy` 配置文件
 - `.eslintrc.js`: `eslint` 配置文件
 - `etc/inventory.yml`: inventory配置
 - `etc/tsc_ansible_mcp.toml`: 主配置文件
+- `etc/tokens.txt`: API Token 文件（不提交到 git）
+- `etc/tokens.txt.example`: API Token 文件示例
 - `logs/tsc_ansible_mcp.db`: SQLite 数据库
 
 ## 3. 目标服务器基础运行环境
@@ -140,8 +146,8 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 
 执行 Python 安装前，按以下顺序检查是否已安装：
 
-1. 系统 Python：`which python3`
-2. tsc_python：`test -f /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3`
+1. 系统 Python：`command -v python3`
+2. tsc_python：`test -x /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3`
 
 若任一检查通过，则跳过安装。
 

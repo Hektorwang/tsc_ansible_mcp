@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-TSC Ansible MCP 是一个远程主机自动化管理平台，通过支持通过 MCP 服务调度 Ansible 实现对多台主机的批量管理操作。支持环境探测、软件安装、命令执行、文件分发、Playbook 执行等核心功能。
+TSC Ansible MCP 是一个远程主机自动化管理平台，支持通过 MCP 服务调度 Ansible 实现对多台主机的批量管理操作。支持环境探测、软件安装、命令执行、文件分发、Playbook 执行等核心功能。
 
 ## 核心功能
 
@@ -39,6 +39,18 @@ TSC Ansible MCP 是一个远程主机自动化管理平台，通过支持通过 
 - 列出可用的 playbook 文件（含元数据说明）
 - 执行指定的 playbook 文件
 - 支持传入额外变量
+
+### 6. API 认证
+
+- 支持标准的 HTTP Bearer Token 认证
+- Token 文件独立管理，不暴露在配置文件中
+- 认证开关灵活控制
+
+### 7. 上下文管理
+
+- 支持在会话间持久化存储数据
+- 提供 5 个上下文管理工具：set_context, get_context, delete_context, list_contexts, clear_contexts
+- 支持键值对操作，便于保存配置、状态信息等
 
 ## 技术架构
 
@@ -75,7 +87,7 @@ tsc_ansible_mcp/
 ### 安装依赖
 
 ```bash
-pip install ansible-runner fastapi fastmcp uvicorn sqlalchemy pydantic tomli pyyaml
+pip install ansible-runner fastapi fastmcp uvicorn sqlalchemy pydantic pyyaml
 ```
 
 ### 配置文件
@@ -91,11 +103,9 @@ path = "/mcp"
 default_timeout = 600
 max_timeout = 3600
 
-[nginx]
-base_url = "http://192.168.19.22"
-python_version = "0.9.5"
-python_date = "20260330"
-local_path = "/home/tsc/cicd/html"
+[tsc_repo]
+base_url = "http://192.168.19.22/tsc_install"
+local_path = "/home/tsc/cicd/html/tsc_install"
 
 [execution]
 timeout = 300
@@ -104,6 +114,11 @@ serial = 10
 
 [playbooks]
 path = "playbooks"
+
+[auth]
+enabled = true
+api_keys = ["sk-tsc-ansible-mcp-2026"]
+whitelist_ips = ["127.0.0.1", "192.168.19.0/24"]
 ```
 
 ### 启动服务
@@ -205,11 +220,21 @@ ansible_playbook(
 
 ### REST API 使用
 
+#### 认证
+
+所有 REST API 请求需要在请求头中携带 Bearer Token：
+
+```bash
+curl -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
+  http://localhost:8500/api/v1/executor/stats
+```
+
 #### 执行命令
 
 ```bash
 curl -X POST http://localhost:8500/api/v1/shell \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
   -d '{
     "targets": ["192.168.1.1"],
     "command": "ls -la",
@@ -225,6 +250,7 @@ curl -X POST http://localhost:8500/api/v1/shell \
 ```bash
 curl -X POST http://localhost:8500/api/v1/hosts/status \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
   -d '{
     "targets": ["192.168.1.1"],
     "credentials": {
@@ -237,7 +263,8 @@ curl -X POST http://localhost:8500/api/v1/hosts/status \
 #### 列出 Playbook
 
 ```bash
-curl http://localhost:8500/api/v1/playbooks
+curl -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
+  http://localhost:8500/api/v1/playbooks
 ```
 
 #### 执行 Playbook
@@ -245,6 +272,7 @@ curl http://localhost:8500/api/v1/playbooks
 ```bash
 curl -X POST http://localhost:8500/api/v1/playbooks/execute \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
   -d '{
     "playbook": "system_check.yml",
     "targets": ["192.168.1.1"],
