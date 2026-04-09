@@ -1101,22 +1101,29 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
     def get_asgi_app(self):
         """获取 ASGI 应用，挂载 MCP 到 FastAPI"""
-        mcp_app = self.mcp.http_app(path="/mcp", transport="streamable-http")
+        # 创建 MCP 应用（Streamable HTTP transport）
+        # http_app(path="/") 设置 MCP 端点为根路径
+        # 然后我们会将它挂载到 FastAPI 的 /mcp 路径
+        mcp_app = self.mcp.http_app(path="/", transport="streamable-http")
         from contextlib import asynccontextmanager
         from lib.middleware import MCPAuthorizationMiddleware
 
         @asynccontextmanager
         async def lifespan(app):
             self.playbook_scanner.start_watching(self._on_playbook_changed)
+            # MCP 应用有自己的 lifespan，我们需要同时管理
             async with mcp_app.lifespan(app):
                 yield
             self.playbook_scanner.stop_watching()
 
         self.app.router.lifespan_context = lifespan
 
-        # 使用新的授权中间件替换旧的认证中间件
-        # 新中间件支持：JWT 认证 + 用户上下文 + 工具列表过滤 + 权限检查
+        # 使用授权中间件包装 MCP 应用
         authorized_mcp_app = MCPAuthorizationMiddleware(mcp_app, self.auth)
 
-        self.app.mount("/", authorized_mcp_app)
+        # 将 MCP 应用挂载到 FastAPI 应用的 /mcp 路径
+        # 这样 MCP 端点在 http://host:port/mcp
+        # REST API 端点在 http://host:port/api/v1/...
+        self.app.mount("/mcp", authorized_mcp_app)
+        
         return self.app

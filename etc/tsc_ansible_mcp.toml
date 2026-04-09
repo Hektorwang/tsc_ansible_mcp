@@ -55,7 +55,7 @@ path = "playbooks"
 
 [logging]
 dir = "logs"
-level = "INFO"
+level = "DEBUG"
 
 [auth]
 enabled = true

@@ -203,6 +203,16 @@ def main():
             description=args.description,
         )
 
+        # 保存 JWT 到文件
+        jwt_token_file = Path(__file__).parent.parent / "etc" / "jwt_tokens.txt"
+        with open(jwt_token_file, "a") as f:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"\n# {timestamp}\n")
+            f.write(f"# User: {args.name} ({args.sub}), Role: {args.role}\n")
+            f.write(f"export JWT_TOKEN=\"{token}\"\n")
+            f.write(f"# Token: {token}\n")
+
         print(f"JWT Token: {token}")
         print()
         print(f"用户标识: {args.sub}")
@@ -212,6 +222,8 @@ def main():
             print(f"有效期: {args.expires} ({expires_in} 秒)")
         else:
             print("有效期: 永久有效")
+        print()
+        print(f"JWT 已保存到: {jwt_token_file}")
         print()
         print("使用方式:")
         print(

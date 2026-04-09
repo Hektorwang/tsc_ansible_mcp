@@ -25,7 +25,8 @@ logger = get_logger()
 
 def main():
     config = Config()
-    setup_logger()
+    log_level = config.get("logging.level", "INFO")
+    setup_logger(log_level=log_level)
     logger.info("启动 TSC_ANSIBLE_MCP 服务")
     logger.info(f"MCP 端点: http://{config.mcp_host}:{config.mcp_port}/mcp")
     logger.info(f"REST API 文档: http://{config.mcp_host}:{config.mcp_port}/docs")
