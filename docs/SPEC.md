@@ -478,11 +478,23 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
       "issued_at": "2026-04-07T10:00:00Z",
       "expires_at": null,
       "description": "管理员 Token",
-      "revoked": false
+      "revoked": false,
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
     }
   ]
 }
 ```
+
+**字段说明**（v1.7.0 更新）:
+- `jwt_id`: JWT 唯一标识
+- `sub`: 用户唯一标识
+- `name`: 用户名称
+- `role`: 用户角色
+- `issued_at`: 签发时间
+- `expires_at`: 过期时间（null 表示永久有效）
+- `description`: JWT 描述
+- `revoked`: 是否已撤销
+- `token`: JWT token 字符串（v1.7.0 新增）
 
 ### 12.6 JWT 生成器
 

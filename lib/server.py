@@ -179,7 +179,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         self.playbook_scanner = PlaybookScanner(self.config)
         self.mcp = FastMCP(
             name="tsc_ansible_mcp",
-            version="1.5.0",
+            version="1.7.0",
             instructions=self.MCP_INSTRUCTIONS,
         )
         self._register_mcp_tools()
@@ -760,7 +760,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         app = FastAPI(
             title="TSC_ANSIBLE_MCP API",
             description="TSC Ansible MCP REST API 服务",
-            version="1.5.0",
+            version="1.7.0",
             docs_url="/docs",
             redoc_url="/redoc",
         )

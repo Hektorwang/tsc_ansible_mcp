@@ -1,5 +1,104 @@
 # Release Notes
 
+## Version=1.7.0
+
+2026-04-09
+
+### 新功能
+
+#### 1. JWT Token 字符串保存
+
+- **Token 字符串保存** - 签发的 JWT token 字符串现在会保存到 `etc/jwt_issued_tokens.json`
+- **方便管理** - 可以直接查看已签发的 token 字符串，无需重新生成
+- **记录完整** - JWT 记录包含完整的 token 字符串和元数据
+
+#### 2. 中间件重构
+
+- **BaseHTTPMiddleware** - 使用 Starlette 的 `BaseHTTPMiddleware` 基类重写中间件
+- **代码简化** - 无需手动处理 ASGI 规范，代码更简洁
+- **自动处理** - 自动处理请求体和响应体
+
+#### 3. SSE 格式支持
+
+- **SSE 响应解析** - 支持 Server-Sent Events (SSE) 格式的响应
+- **自动检测** - 自动检测响应格式（SSE 或纯 JSON）
+- **正确返回** - 正确解析和返回 SSE 格式的响应
+
+#### 4. 详细日志记录
+
+- **唯一 request_id** - 每个请求分配唯一的 request_id
+- **完整生命周期** - 记录请求的完整生命周期
+- **关键步骤** - 记录 JWT 验证、权限检查、工具过滤等关键步骤
+- **耗时统计** - 记录每个步骤的耗时
+
+### 技术改进
+
+#### 中间件架构
+
+```
+旧架构（v1.6.0）：
+手动实现 ASGI 规范
+├── 处理 scope, receive, send
+├── 手动读取请求体
+└── 手动发送响应
+
+新架构（v1.7.0）：
+使用 BaseHTTPMiddleware
+├── 自动处理 ASGI 规范
+├── 自动处理请求体和响应体
+└── 简化代码逻辑
+```
+
+#### SSE 格式处理
+
+```
+检测响应格式
+├── 判断是否以 "event:" 开头
+├── SSE 格式：提取 "data:" 行
+└── 纯 JSON：直接解析
+
+返回响应
+├── SSE 格式：返回 "event: message\ndata: {JSON}\n\n"
+└── 纯 JSON：返回标准 JSON 响应
+```
+
+### 文件变更
+
+#### 修改文件
+
+- `lib/middleware.py` - 重写中间件，使用 BaseHTTPMiddleware
+- `lib/jwt_utils.py` - JWT token 字符串保存到记录文件
+- `bin/server.py` - 从配置文件读取日志级别
+
+### 配置变更
+
+#### 日志级别配置
+
+现在可以在配置文件中设置日志级别：
+
+```toml
+[logging]
+dir = "logs"
+level = "DEBUG"  # 支持 DEBUG, INFO, WARNING, ERROR
+```
+
+### 文档更新
+
+- 更新 `docs/PRD.md` - 添加 JWT token 字符串保存说明
+- 更新 `docs/SPEC.md` - 添加 JWT 记录字段说明
+- 更新 `docs/ARCHITECTURE.md` - 添加中间件技术实现细节
+- 更新 `README.md` - 添加 v1.7.0 功能说明
+
+### 测试验证
+
+- ✅ JWT token 字符串正确保存到记录文件
+- ✅ 中间件正确处理 SSE 格式响应
+- ✅ 工具列表过滤功能正常
+- ✅ 详细日志正确记录
+- ✅ Cherry Studio 客户端兼容性测试通过
+
+---
+
 ## Version=1.6.0
 
 2026-04-09

@@ -47,6 +47,9 @@ TSC Ansible MCP 是一个远程主机自动化管理平台，支持通过 MCP �
 - 支持角色权限控制（admin, user, 自定义角色）
 - 密钥自动生成和管理
 - 审计日志记录
+- **JWT Token 字符串保存**（v1.7.0 新增）
+  - 签发的 JWT token 字符串保存到 `etc/jwt_issued_tokens.json`
+  - 方便查看和管理已签发的 token
 - **MCP 工具列表角色过滤**（v1.6.0 新增）
   - admin 角色：可以看到所有 MCP 工具
   - user 角色：只能看到 playbook 相关工具
@@ -56,6 +59,11 @@ TSC Ansible MCP 是一个远程主机自动化管理平台，支持通过 MCP �
   - 第一层：MCP 协议层面权限检查（中间件拦截）
   - 第二层：工具函数内部权限检查（防止绕过）
   - 实现"深度防御"（Defense in Depth）原则
+- **中间件重构**（v1.7.0 新增）
+  - 使用 BaseHTTPMiddleware 简化代码
+  - 支持 SSE 格式响应
+  - 详细的日志记录（每个请求分配唯一 request_id）
+  - 记录请求的完整生命周期和每个步骤的耗时
 
 ### 7. 上下文管理
 
