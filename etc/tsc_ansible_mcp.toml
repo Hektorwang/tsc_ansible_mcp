@@ -59,4 +59,9 @@ level = "INFO"
 
 [auth]
 enabled = true
-tokens_file = "etc/tokens.txt"
+jwt_secret_key_file = "etc/jwt_secret_key.txt"
+jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
+
+[auth.tool_permissions]
+admin = ["*"]
+user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]

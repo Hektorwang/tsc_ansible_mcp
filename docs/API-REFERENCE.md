@@ -694,6 +694,11 @@ MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 RE
 | `list_playbooks`     | 列出可用的 playbook 文件，包含元数据说明       | 2.8           |
 | `ansible_playbook`   | 执行 playbook 文件                             | 2.9           |
 | `get_task_status`    | 查询任务状态                                   | 2.13          |
+| `set_context`        | 设置上下文键值对                               | -             |
+| `get_context`        | 获取上下文值                                   | -             |
+| `delete_context`     | 删除指定的上下文键值对                         | -             |
+| `list_contexts`      | 列出所有上下文键值对                           | -             |
+| `clear_contexts`     | 清空所有上下文数据                             | -             |
 
 ## 4. 错误码说明
 
@@ -730,19 +735,30 @@ Content-Type: application/json
 
 ### 5.2 认证请求头
 
-所有 API 请求（除了健康检查端点）必须在请求头中携带 Bearer Token：
+所有 API 请求（除了健康检查端点）必须在请求头中携带 JWT Token：
 
 ```http
-Authorization: Bearer sk-tsc-ansible-mcp-2026
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 **认证说明**：
 
+- 采用 JWT (JSON Web Token) 认证，支持身份识别和权限控制
+- 使用 `PyJWT` 库实现 JWT 签发和验证
+- 签名算法：HS256
 - 认证功能可通过配置文件启用或禁用（`auth.enabled`）
-- 使用标准的 HTTP Bearer Token 认证方式
-- Token 在配置文件 `etc/tsc_ansible_mcp.toml` 中配置
-- 可配置多个有效的 Token
-- 可选配置 IP 白名单进行双重保护
+
+**角色权限**：
+
+| 角色  | 权限范围                                          |
+| ----- | ------------------------------------------------- |
+| admin | 可调用所有工具                                    |
+| user  | 仅能调用 playbook 相关工具（list_playbooks, ansible_playbook, get_task_status, 以及所有动态生成的playbook工具） |
+
+**权限验证机制**:
+- LLM 获取工具列表时，根据角色暴露可用工具
+- API 调用时验证用户权限
+- 日志中记录每个操作的用户名
 
 **示例请求**：
 
@@ -750,7 +766,7 @@ Authorization: Bearer sk-tsc-ansible-mcp-2026
 # 使用 curl 发送带认证的请求
 curl -X POST http://localhost:8500/api/v1/shell \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -d '{
     "targets": ["192.168.1.100"],
     "command": "ls -la"
@@ -771,16 +787,41 @@ curl -X POST http://localhost:8500/api/v1/shell \
 ```json
 {
   "status": "error",
-  "message": "Invalid Bearer Token"
+  "message": "Invalid JWT Token"
 }
 ```
 
-**生成 Token**：
+**权限不足响应**：
 
-使用提供的工具生成安全的 Token：
+```json
+{
+  "status": "error",
+  "message": "Permission denied. Role 'user' cannot access tool 'ansible_shell'"
+}
+```
+
+**生成 JWT**：
+
+使用提供的工具生成 JWT：
 
 ```bash
-python bin/generate_api_key.py
+# 生成新密钥
+python bin/generate_jwt.py --generate-key
+
+# 签发 JWT（永久有效）
+python bin/generate_jwt.py --issue --sub user_001 --name "张三" --role admin
+
+# 签发 JWT（24小时有效期）
+python bin/generate_jwt.py --issue --sub user_002 --name "李四" --role user --expires 24h
+
+# 列出已签发 JWT
+python bin/generate_jwt.py --list
+
+# 撤销 JWT
+python bin/generate_jwt.py --revoke jwt_001
+
+# 验证 JWT
+python bin/generate_jwt.py --verify <token>
 ```
 
 **配置示例**：
@@ -789,21 +830,36 @@ python bin/generate_api_key.py
 # etc/tsc_ansible_mcp.toml
 [auth]
 enabled = true
-tokens_file = "etc/tokens.txt"
-whitelist_ips = ["127.0.0.1", "192.168.19.0/24"]
+jwt_secret_key_file = "etc/jwt_secret_key.txt"
+jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
+
+[auth.tool_permissions]
+admin = ["*"]
+user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 ```
 
-**Tokens 文件**：
+**密钥文件**：
 
-创建 `etc/tokens.txt`（参考 `etc/tokens.txt.example`）：
+创建 `etc/jwt_secret_key.txt`：
 
 ```
-# 每行一个 token
-sk-tsc-ansible-mcp-2026-production
-sk-tsc-ansible-mcp-2026-dev
+sk-jwt-secret-key-2026
 ```
 
-**注意**：`etc/tokens.txt` 已添加到 `.gitignore`，不会被提交到 git。
+**JWT 签发记录文件**：
+
+创建 `etc/jwt_issued_tokens.json`：
+
+```json
+{
+  "tokens": []
+}
+```
+
+**注意**：
+- `etc/jwt_secret_key.txt` 和 `etc/jwt_issued_tokens.json` 已添加到 `.gitignore`，不会被提交到 git
+- JWT 默认永久有效，签发时可选设置过期时间
+- 支持 JWT 撤销功能
 
 ## 6. 响应格式说明
 

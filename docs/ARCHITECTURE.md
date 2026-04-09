@@ -312,8 +312,8 @@ bash /tmp/tsc_tools.sh
 
 **工具命名规则**:
 
-- 使用 playbook 文件名（不含扩展名）
-- 例如: `collect_iaas_info.yml` -> 工具名 `collect_iaas_info`
+- 使用 `playbook_` 前缀 + playbook 文件名（不含扩展名）
+- 例如: `collect_iaas_info.yml` -> 工具名 `playbook_collect_iaas_info`
 
 **元数据要求**:
 
@@ -326,6 +326,134 @@ bash /tmp/tsc_tools.sh
 - 使用 watchdog 库实现跨平台文件监控
 - 监控事件: 文件创建、修改、删除
 - 热更新限制: 需要重启服务才能使新的工具生效
+
+### 4.12 JWT 认证架构
+
+**功能**: 实现 JWT 身份认证和角色权限控制
+
+**核心组件**:
+
+- `lib/jwt_utils.py`: JWT 工具模块
+- `lib/auth.py`: 认证中间件
+- `bin/generate_jwt.py`: JWT 生成器
+
+**认证流程**:
+
+```text
+客户端请求
+    ↓
+认证中间件 (auth.py)
+    ↓
+JWT 验证 (PyJWT)
+    ↓
+提取用户身份 (sub, name, role)
+    ↓
+权限验证 (工具注册时)
+    ↓
+执行请求
+```
+
+**权限验证流程**:
+
+```text
+工具调用请求
+    ↓
+提取 JWT 中的 role
+    ↓
+查询配置文件中的权限配置
+    ↓
+检查工具是否在允许列表中
+    ↓
+允许/拒绝执行
+```
+
+**权限验证机制**:
+- MCP 工具列表根据角色过滤（v1.6.0 新增）
+- MCP 工具调用时验证用户权限
+- LLM 获取工具列表时，根据角色暴露可用工具
+- API 调用时验证用户权限
+- 日志中记录每个操作的用户名
+
+**MCP 工具角色过滤架构**（v1.6.0 新增）:
+
+```
+MCP Client 请求
+    ↓
+JWT 认证中间件（提取角色信息）
+    ↓
+授权中间件（过滤工具列表）
+    ↓
+工具执行（权限检查）
+    ↓
+返回结果
+```
+
+**双重保护机制**（v1.6.0 新增）:
+
+```
+第一层保护：MCP 协议层面
+├── tools/list 过滤：user 只能看到 playbook 相关工具
+└── tools/call 检查：拒绝 user 调用 admin 工具
+
+第二层保护：工具函数内部
+├── check_host_status：内部权限检查
+├── install_tsc_tools：内部权限检查
+├── install_python：内部权限检查
+├── ansible_shell：内部权限检查
+├── ansible_copy：内部权限检查
+└── ansible_fetch：内部权限检查
+```
+
+**核心组件**:
+- `lib/context_vars.py`: 上下文变量管理
+- `lib/middleware.py`: MCP 授权中间件
+- `lib/jwt_utils.py`: 权限检查逻辑
+- `lib/permission.py`: 工具函数权限检查
+
+**角色权限设计**:
+
+| 角色  | 权限配置        | 说明             |
+| ----- | --------------- | ---------------- |
+| admin | ["*"]           | 可调用所有工具   |
+| user  | ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"] | 仅 playbook 相关 |
+
+**权限配置说明**:
+- `*`: 表示所有工具
+- `playbook_*`: 表示所有动态生成的 playbook 工具
+
+**JWT 签发流程**:
+
+```text
+运行 generate_jwt.py --issue
+    ↓
+读取密钥文件 (jwt_secret_key.txt)
+    ↓
+生成 JWT (PyJWT)
+    ↓
+记录到签发记录 (jwt_issued_tokens.json)
+    ↓
+输出 JWT Token
+```
+
+**JWT 撤销流程**:
+
+```text
+运行 generate_jwt.py --revoke <jwt_id>
+    ↓
+读取签发记录文件
+    ↓
+标记 JWT 为已撤销
+    ↓
+写回签发记录文件
+```
+
+**与其他认证系统对接**:
+
+通过更换密钥文件，可以与其他认证系统对接：
+
+1. 外部认证系统签发 JWT（使用相同密钥和 payload 结构）
+2. 系统自动验证外部签发的 JWT
+3. 支持单点登录（SSO）场景
 
 ## 5. 技术选型说明
 

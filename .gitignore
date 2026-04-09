@@ -14,4 +14,6 @@ __pycache__
 /galaxy_cache
 inventory.yml
 etc/tokens.txt
+etc/jwt_secret_key.txt
+etc/jwt_issued_tokens.json
 !.gitignore

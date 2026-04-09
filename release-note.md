@@ -1,19 +1,163 @@
 # Release Notes
 
-## Version=1.4.0
+## Version=1.6.0
 
-2026-04-07
+2026-04-09
 
 ### 新功能
 
-#### API 认证系统
+#### 1. MCP 工具列表角色过滤
 
-- **Bearer Token 认证** - 实现标准的 HTTP Bearer Token 认证机制
-- **Token 文件管理** - Token 独立存储在 `etc/tokens.txt`，不暴露在主配置文件中
-- **认证开关** - 通过配置文件灵活控制认证启用/禁用
-- **中间件保护** - 所有 API 端点和 MCP 端点统一受认证保护
+- **工具列表过滤** - 根据用户角色过滤 MCP 工具列表
+  - admin 角色：可以看到所有 MCP 工具
+  - user 角色：只能看到 playbook 相关工具
+- **双重保护机制** - 实现"深度防御"原则
+  - 第一层：MCP 协议层面权限检查（中间件拦截）
+  - 第二层：工具函数内部权限检查（防止绕过）
+- **上下文传递** - 使用 contextvars 传递用户信息
+- **审计日志增强** - 记录工具列表过滤和权限检查
 
-#### 认证配置
+#### 2. 核心组件
+
+- **lib/context_vars.py** - 上下文变量管理模块
+- **lib/middleware.py** - MCP 授权中间件
+- **lib/permission.py** - 工具函数权限检查模块
+
+### 技术实现
+
+#### MCP 授权中间件
+
+拦截 MCP 协议请求，实现工具列表过滤和权限检查：
+
+```
+MCP Client 请求
+    ↓
+JWT 认证中间件（提取角色信息）
+    ↓
+授权中间件（过滤工具列表）
+    ↓
+工具执行（权限检查）
+    ↓
+返回结果
+```
+
+#### 双重保护机制
+
+防止 LLM 通过其他方式（如历史对话、文档等）得知工具名称后尝试调用：
+
+1. **第一层保护**：MCP 协议层面
+   - 中间件拦截 `tools/list` 请求，过滤工具列表
+   - 中间件拦截 `tools/call` 请求，检查权限
+
+2. **第二层保护**：工具函数内部
+   - 每个 admin 专用工具函数内部都有权限检查
+   - 即使中间件失效，工具函数本身也会拒绝执行
+
+### 安全增强
+
+- **防止权限绕过** - LLM 无法通过任何方式调用无权限的工具
+- **深度防御** - 多层保护确保安全
+- **审计追踪** - 所有权限检查都有日志记录
+
+### 文档更新
+
+- 更新 PRD.md - 添加 MCP 工具角色过滤说明
+- 更新 SPEC.md - 添加技术规格和双重保护机制
+- 更新 ARCHITECTURE.md - 添加架构图和核心组件
+- 更新 API-REFERENCE.md - 添加工具列表
+- 更新 README.md - 添加功能说明
+
+---
+
+## Version=1.5.0
+
+2026-04-08
+
+### 新功能
+
+#### 1. JWT 认证系统
+
+- **JWT 身份认证** - 使用 JWT (JSON Web Token) 替换简单的 Bearer Token 认证
+- **角色权限控制** - 支持 admin、user 和自定义角色
+- **权限通配符匹配** - 支持 `*` 和 `playbook_*` 等通配符匹配
+- **密钥自动生成** - 密钥长度不足时自动生成符合要求的密钥
+- **JWT 生成器工具** - 提供 `bin/generate_jwt.py` 工具管理 JWT
+
+#### 2. 动态工具命名调整
+
+- **统一命名规则** - 动态生成的 playbook 工具添加 `playbook_` 前缀
+- **示例**: `collect_iaas_info.yml` -> `playbook_collect_iaas_info`
+
+#### 3. 审计日志增强
+
+- **请求参数记录** - 记录目标主机、命令等参数
+- **响应状态记录** - 记录操作结果摘要
+- **完整数据记录** - 支持记录完整的请求和响应数据
+
+### 破坏性变更
+
+#### 认证方式迁移
+
+v1.5.0 完全替换了认证系统，旧的 Token 认证已移除：
+
+- 移除 `etc/tokens.txt` 文件
+- 移除 `etc/tokens.txt.example` 文件
+- 移除 `bin/generate_api_key.py` 工具
+- 移除配置文件中的 `api_keys` 配置项
+
+**迁移步骤**:
+
+1. 使用 `python bin/generate_jwt.py --issue --sub <user_id> --name <name> --role admin` 签发新的 JWT
+2. 更新客户端代码，使用新的 JWT Token
+3. 更新配置文件，使用 JWT 配置项
+
+### JWT 使用指南
+
+#### 生成 JWT
+
+```bash
+# 签发 JWT（永久有效）
+python bin/generate_jwt.py --issue --sub user_001 --name "张三" --role admin
+
+# 签发 JWT（24小时有效期）
+python bin/generate_jwt.py --issue --sub user_002 --name "李四" --role user --expires 24h
+
+# 列出已签发的 JWT
+python bin/generate_jwt.py --list
+
+# 验证 JWT
+python bin/generate_jwt.py --verify <token>
+
+# 撤销 JWT
+python bin/generate_jwt.py --revoke <jwt_id>
+```
+
+#### 使用 JWT
+
+```bash
+curl -H "Authorization: Bearer <your_jwt_token>" \
+  http://localhost:8500/api/v1/executor/stats
+```
+
+### 角色权限配置
+
+在 `etc/tsc_ansible_mcp.toml` 中配置角色权限：
+
+```toml
+[auth.tool_permissions]
+admin = ["*"]
+user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
+# 支持自定义角色
+# readonly = ["list_playbooks", "get_task_status"]
+```
+
+**权限说明**:
+- `*`: 表示所有工具
+- `playbook_*`: 表示所有动态生成的 playbook 工具
+
+### 配置变更
+
+旧配置（v1.4.0）:
 
 ```toml
 [auth]
@@ -21,7 +165,112 @@ enabled = true
 tokens_file = "etc/tokens.txt"
 ```
 
-#### Token 管理
+新配置（v1.5.0）:
+
+```toml
+[auth]
+enabled = true
+jwt_secret_key_file = "etc/jwt_secret_key.txt"
+jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
+
+[auth.tool_permissions]
+admin = ["*"]
+user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
+```
+
+### 文件变更
+
+#### 新增文件
+
+- `lib/jwt_utils.py` - JWT 工具模块
+- `bin/generate_jwt.py` - JWT 生成器工具
+- `etc/jwt_secret_key.txt` - JWT 密钥文件（自动生成）
+- `etc/jwt_issued_tokens.json` - JWT 签发记录文件
+
+#### 删除文件
+
+- `etc/tokens.txt.example` - 旧 Token 示例文件
+- `bin/generate_api_key.py` - 旧 API Key 生成工具
+
+### 依赖变更
+
+- 新增 `PyJWT>=2.8.0` 依赖
+
+### 文档更新
+
+- 更新 `README.md` - JWT 认证说明、工具命名规则、配置示例
+- 更新 `docs/SPEC.md` - JWT 认证规格
+- 更新 `docs/PRD.md` - JWT 认证需求
+- 更新 `docs/ARCHITECTURE.md` - JWT 认证架构
+- 更新 `docs/API-REFERENCE.md` - JWT 认证 API 说明
+- 更新 `docs/TODO.md` - v1.5.0 任务清单
+
+---
+
+## Version=1.4.0
+
+2026-04-07
+
+### 新功能
+
+#### 1. 动态 Playbook 工具生成
+
+- **自动工具注册** - 服务启动时自动扫描 playbooks 目录，为每个 playbook 动态生成独立的 MCP 工具
+- **工具命名** - 使用 playbook 文件名（不含扩展名）作为工具名称
+- **元数据解析** - 支持 JSON 格式的元数据解析，自动生成工具描述
+- **文件监控** - 使用 watchdog 库监控 playbook 文件变化（需重启服务生效）
+- **LLM 体验提升** - LLM 无需先调用 list_playbooks，可直接调用 playbook 工具
+
+#### 2. 技术改进
+
+- **新增依赖** - 添加 watchdog>=3.0.0 用于文件监控
+- **PlaybookScanner 类** - 新增 `lib/playbook_scanner.py` 模块
+- **元数据规范** - playbook 必须包含 description 字段才能生成工具
+
+## Version=1.3.0
+
+2026-04-07
+
+### 新功能
+
+#### 1. API 认证系统
+
+- **Bearer Token 认证** - 实现标准的 HTTP Bearer Token 认证机制
+- **Token 文件管理** - Token 独立存储在 `etc/tokens.txt`，不暴露在主配置文件中
+- **认证开关** - 通过配置文件灵活控制认证启用/禁用
+- **中间件保护** - 所有 API 端点和 MCP 端点统一受认证保护
+
+#### 2. 上下文管理工具
+
+新增 5 个上下文管理 MCP 工具，支持在会话间持久化存储数据：
+
+- **set_context** - 设置上下文键值对
+- **get_context** - 获取上下文值
+- **delete_context** - 删除指定的上下文键值对
+- **list_contexts** - 列出所有上下文键值对
+- **clear_contexts** - 清空所有上下文数据
+
+#### 3. Python 检测逻辑优化
+
+- **新增字段** - `tsc_python_installed` 字段，区分系统 Python 和 tsc_python
+- **逻辑修复** - `install_python` 现在正确判断是否需要安装 tsc_python
+- **语义明确** - 即使主机有系统 Python，也可以安装独立的 tsc_python 环境
+
+#### 4. 代码质量改进
+
+- **sys.path.insert 优化** - 修复路径插入逻辑，确保优先级正确
+- **动态路径** - 使用 `Path(__file__).parent` 替代硬编码路径
+- **高效判断** - 只在必要时才进行路径操作
+
+### 认证配置
+
+```toml
+[auth]
+enabled = true
+tokens_file = "etc/tokens.txt"
+```
+
+### Token 管理
 
 - **生成工具** - 提供 `bin/generate_api_key.py` 生成安全的随机 Token
 - **文件格式** - 每行一个 Token，支持注释
@@ -52,20 +301,40 @@ curl -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
 }
 ```
 
+### 工具列表更新
+
+MCP 工具总数从 9 个增加到 14 个：
+
+1. ansible_shell
+2. install_python
+3. check_host_status
+4. get_task_status
+5. install_tsc_tools
+6. ansible_copy
+7. ansible_fetch
+8. list_playbooks
+9. ansible_playbook
+10. **set_context** (新增)
+11. **get_context** (新增)
+12. **delete_context** (新增)
+13. **list_contexts** (新增)
+14. **clear_contexts** (新增)
+
 ### 安全特性
 
 - Token 使用加密安全的随机数生成器生成
-- 支持 IP 白名单双重验证
 - 详细的认证日志记录
-- 标准的 HTTP 401/403 响应
+- 标准的 HTTP 401 响应
 - WWW-Authenticate 头支持
 
 ### 文档更新
 
 - 新增 `docs/AUTH-GUIDE.md` - 完整的认证使用指南
+- 新增 `docs/PYTHON_DETECTION_FIX.md` - Python 检测逻辑修复说明
+- 新增 `docs/SYS_PATH_FIX.md` - sys.path.insert 修复说明
 - 更新 `README.md` - 添加认证说明和版本号更新
 - 更新 `docs/API-REFERENCE.md` - 添加认证请求头说明
-- 更新 `docs/PRD.md` - 添加认证需求
+- 更新 `docs/PRD.md` - 添加认证需求和上下文管理工具
 
 ### 测试验证
 
@@ -74,6 +343,8 @@ curl -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
 - 正确 Token 访问返回 200
 - 健康检查端点无需认证
 - API 文档端点无需认证
+- 上下文管理工具功能正常
+- Python 检测逻辑正确区分系统 Python 和 tsc_python
 
 ---
 

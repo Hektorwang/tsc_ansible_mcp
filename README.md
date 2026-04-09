@@ -43,9 +43,19 @@ TSC Ansible MCP 是一个远程主机自动化管理平台，支持通过 MCP �
 
 ### 6. API 认证
 
-- 支持标准的 HTTP Bearer Token 认证
-- Token 文件独立管理，不暴露在配置文件中
-- 认证开关灵活控制
+- 支持 JWT (JSON Web Token) 认证
+- 支持角色权限控制（admin, user, 自定义角色）
+- 密钥自动生成和管理
+- 审计日志记录
+- **MCP 工具列表角色过滤**（v1.6.0 新增）
+  - admin 角色：可以看到所有 MCP 工具
+  - user 角色：只能看到 playbook 相关工具
+  - 工具列表在 MCP 协议层面进行过滤
+  - 工具调用时进行二次权限检查
+- **双重保护机制**（v1.6.0 新增）
+  - 第一层：MCP 协议层面权限检查（中间件拦截）
+  - 第二层：工具函数内部权限检查（防止绕过）
+  - 实现"深度防御"（Defense in Depth）原则
 
 ### 7. 上下文管理
 
@@ -118,8 +128,12 @@ path = "playbooks"
 
 [auth]
 enabled = true
-api_keys = ["sk-tsc-ansible-mcp-2026"]
-whitelist_ips = ["127.0.0.1", "192.168.19.0/24"]
+jwt_secret_key_file = "etc/jwt_secret_key.txt"
+jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
+
+[auth.tool_permissions]
+admin = ["*"]
+user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 ```
 
 ### 启动服务
@@ -223,10 +237,28 @@ ansible_playbook(
 
 #### 认证
 
-所有 REST API 请求需要在请求头中携带 Bearer Token：
+所有 REST API 请求需要在请求头中携带 JWT Token：
+
+**生成 JWT**:
 
 ```bash
-curl -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
+# 签发 JWT（永久有效）
+python bin/generate_jwt.py --issue --sub user_001 --name "张三" --role admin
+
+# 签发 JWT（24小时有效期）
+python bin/generate_jwt.py --issue --sub user_002 --name "李四" --role user --expires 24h
+
+# 列出已签发的 JWT
+python bin/generate_jwt.py --list
+
+# 验证 JWT
+python bin/generate_jwt.py --verify <token>
+```
+
+**使用 JWT**:
+
+```bash
+curl -H "Authorization: Bearer <your_jwt_token>" \
   http://localhost:8500/api/v1/executor/stats
 ```
 
@@ -235,7 +267,7 @@ curl -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
 ```bash
 curl -X POST http://localhost:8500/api/v1/shell \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
+  -H "Authorization: Bearer <your_jwt_token>" \
   -d '{
     "targets": ["192.168.1.1"],
     "command": "ls -la",
@@ -251,7 +283,7 @@ curl -X POST http://localhost:8500/api/v1/shell \
 ```bash
 curl -X POST http://localhost:8500/api/v1/hosts/status \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
+  -H "Authorization: Bearer <your_jwt_token>" \
   -d '{
     "targets": ["192.168.1.1"],
     "credentials": {
@@ -264,7 +296,7 @@ curl -X POST http://localhost:8500/api/v1/hosts/status \
 #### 列出 Playbook
 
 ```bash
-curl -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
+curl -H "Authorization: Bearer <your_jwt_token>" \
   http://localhost:8500/api/v1/playbooks
 ```
 
@@ -273,7 +305,7 @@ curl -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
 ```bash
 curl -X POST http://localhost:8500/api/v1/playbooks/execute \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-tsc-ansible-mcp-2026" \
+  -H "Authorization: Bearer <your_jwt_token>" \
   -d '{
     "playbook": "system_check.yml",
     "targets": ["192.168.1.1"],
@@ -340,6 +372,8 @@ Playbook 文件应包含元数据，供 LLM 理解用途：
 
 ## MCP 工具列表
 
+### 基础工具
+
 | 工具名称            | 功能描述                                        |
 | ------------------- | ----------------------------------------------- |
 | `check_host_status` | 检查主机状态（架构、发行版、Python、tsc_tools） |
@@ -351,3 +385,32 @@ Playbook 文件应包含元数据，供 LLM 理解用途：
 | `list_playbooks`    | 列出可用的 playbook 文件                        |
 | `ansible_playbook`  | 执行 playbook 文件                              |
 | `get_task_status`   | 查询任务状态                                    |
+| `set_context`       | 设置上下文键值对                                |
+| `get_context`       | 获取上下文值                                    |
+| `delete_context`    | 删除指定的上下文键值对                          |
+| `list_contexts`     | 列出所有上下文键值对                            |
+| `clear_contexts`    | 清空所有上下文数据                              |
+
+### 动态 Playbook 工具
+
+服务启动时会自动扫描 `playbooks/` 目录，为每个包含元数据的 playbook 文件动态生成独立的 MCP 工具。
+
+**命名规则**: 工具名使用 `playbook_` 前缀 + playbook 文件名（不含扩展名）
+
+**示例**: 如果存在 `playbooks/collect_iaas_info.yml`，将自动生成 `playbook_collect_iaas_info` 工具：
+
+```python
+playbook_collect_iaas_info(
+    targets=["192.168.1.10"],
+    user="root",
+    password="your_password",
+    extravars={"runtime": True}
+)
+```
+
+**元数据要求**: playbook 必须包含 `description` 字段才能生成工具。
+
+**权限控制**: 
+- `admin` 角色可以调用所有工具
+- `user` 角色只能调用 `playbook_*` 工具和 playbook 相关工具
+- 可在配置文件中自定义角色权限

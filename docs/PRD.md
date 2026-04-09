@@ -52,36 +52,101 @@
 
 #### 2.7.1 认证机制
 
-- 支持标准的 HTTP Bearer Token 认证
-- Token 存储在独立文件 `etc/tokens.txt` 中，不暴露在主配置文件
+- 采用 JWT (JSON Web Token) 认证，支持身份识别和权限控制
+- 使用 `PyJWT` 库实现 JWT 签发和验证
+- 签名算法：HS256
 - 认证开关可通过配置文件灵活控制
-- 支持多个有效 Token，便于管理和轮换
 
-#### 2.7.2 认证范围
+#### 2.7.2 JWT 结构
+
+```json
+{
+  "header": {"alg": "HS256", "typ": "JWT"},
+  "payload": {
+    "sub": "user_001",
+    "name": "张三",
+    "role": "admin",
+    "iat": 1712476800
+  }
+}
+```
+
+**Payload 字段说明**:
+- `sub`: 用户唯一标识
+- `name`: 用户名称
+- `role`: 用户角色（admin, user）
+- `iat`: 签发时间
+
+#### 2.7.3 角色权限控制
+
+| 角色    | 权限范围                                        |
+| ------- | ----------------------------------------------- |
+| admin   | 可调用所有工具                                  |
+| user    | 仅能调用 playbook 相关工具（list_playbooks, ansible_playbook, get_task_status, 以及所有动态生成的playbook工具） |
+
+**权限控制的好处**:
+- 减少 LLM 幻觉导致的误操作
+- playbook 经过审查和测试，操作可控
+- 避免执行未经验证的命令
+
+**权限验证机制**:
+- MCP 工具列表根据角色过滤（新增）
+- MCP 工具调用时验证用户权限
+- LLM 获取工具列表时，根据角色暴露可用工具
+- API 调用时验证用户权限
+- 日志中记录每个操作的用户名
+
+**MCP 工具角色过滤**（v1.6.0 新增）:
+- admin 角色：可以看到所有 MCP 工具
+- user 角色：只能看到 playbook 相关工具（list_playbooks, ansible_playbook, get_task_status, playbook_*）
+- 工具列表在 MCP 协议层面进行过滤
+- 工具调用时进行二次权限检查，确保安全
+
+#### 2.7.4 密钥管理
+
+- 密钥文件：`etc/jwt_secret_key.txt`
+- 单一密钥，简化管理
+- 可通过更换密钥与其他认证系统对接
+- 建议定期更换密钥（如每 3 个月）
+
+#### 2.7.5 JWT 签发记录
+
+- 记录文件：`etc/jwt_issued_tokens.json`
+- 记录所有已签发的 JWT 信息
+- 撤销方式：直接从记录文件中删除对应 JWT 信息，然后重启服务
+- 默认永久有效，签发时可选设置过期时间
+
+#### 2.7.6 JWT 生成器
+
+提供 `bin/generate_jwt.py` 工具：
+- 生成新密钥：`--generate-key`
+- 签发 JWT：`--issue --sub user_001 --name "张三" --role admin`
+- 签发带过期时间的 JWT：`--issue --sub user_001 --name "张三" --role admin --expires 24h`
+- 列出已签发 JWT：`--list`
+- 验证 JWT：`--verify <token>`
+
+**撤销 JWT/密钥**：
+- 撤销 JWT：直接编辑 `etc/jwt_issued_tokens.json`，删除对应记录，重启服务
+- 更换密钥：直接编辑 `etc/jwt_secret_key.txt`，重启服务（会使所有已签发的 JWT 失效）
+
+#### 2.7.7 认证范围
 
 - 所有 REST API 端点需要认证（健康检查除外）
 - 所有 MCP 端点需要认证
 - API 文档端点（`/docs`, `/redoc`）无需认证
 
-#### 2.7.3 Token 管理
-
-- 使用加密安全的随机数生成器生成 Token
-- Token 格式：`sk-{random_string}`（建议长度 32 字符）
-- 提供生成工具 `bin/generate_api_key.py`
-- Token 文件每行一个，支持注释（以 # 开头）
-- `etc/tokens.txt` 添加到 `.gitignore`，不提交到版本控制
-
-#### 2.7.4 认证失败响应
+#### 2.7.8 认证失败响应
 
 - Token 缺失：返回 HTTP 401，提示需要 Bearer Token
 - Token 无效：返回 HTTP 401，提示 Token 无效
+- 权限不足：返回 HTTP 403，提示权限不足
 - 响应包含 `WWW-Authenticate: Bearer` 头
 
-#### 2.7.5 审计日志
+#### 2.7.9 审计日志
 
 - 记录所有认证尝试（成功和失败）
-- 记录客户端 IP 和 Token 前缀（前 8 位）
-- 记录请求路径和认证结果
+- 记录用户身份信息（用户名、角色）
+- 记录客户端 IP 和请求路径
 
 ## 3. MCP 工具列表
 
@@ -96,6 +161,11 @@
 | `list_playbooks`    | 列出可用的 playbook 文件，包含元数据说明      | -                 |
 | `ansible_playbook`  | 执行 playbook 文件                            | ansible-playbook  |
 | `get_task_status`   | 查询任务状态                                  | 无                |
+| `set_context`       | 设置上下文键值对                              | 无                |
+| `get_context`       | 获取上下文值                                  | 无                |
+| `delete_context`    | 删除指定的上下文键值对                        | 无                |
+| `list_contexts`     | 列出所有上下文键值对                          | 无                |
+| `clear_contexts`    | 清空所有上下文数据                            | 无                |
 
 ## 4. Playbook 元数据规范
 

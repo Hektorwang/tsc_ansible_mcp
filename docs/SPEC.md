@@ -24,7 +24,7 @@
 - shell 必须使用函数注释(google 风格)
 - python 必须使用 type hint
 - 必须在项目根目录下放置 `README.md` 文件描述本项目的功能、安装、配置、使用等
-- 必须在项目根目录下放置 `release-note.md` 描述本项目的版本变更, 以及在第三行使用 `## Version=1.4.0` 标识当前版本
+- 必须在项目根目录下放置 `release-note.md` 描述本项目的版本变更, 以及在第三行使用 `## Version=1.5.0` 标识当前版本
 
 ### 1.3 优先选择
 
@@ -74,8 +74,8 @@
 - `.eslintrc.js`: `eslint` 配置文件
 - `etc/inventory.yml`: inventory配置
 - `etc/tsc_ansible_mcp.toml`: 主配置文件
-- `etc/tokens.txt`: API Token 文件（不提交到 git）
-- `etc/tokens.txt.example`: API Token 文件示例
+- `etc/jwt_secret_key.txt`: JWT 密钥文件（不提交到 git）
+- `etc/jwt_issued_tokens.json`: JWT 签发记录文件
 - `logs/tsc_ansible_mcp.db`: SQLite 数据库
 
 ## 3. 目标服务器基础运行环境
@@ -311,8 +311,8 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 ### 10.2 工具生成规则
 
 **命名规则**:
-- 使用 playbook 文件名（不含扩展名）
-- 例如: `collect_iaas_info.yml` -> 工具名 `collect_iaas_info`
+- 使用 `playbook_` 前缀 + playbook 文件名（不含扩展名）
+- 例如: `collect_iaas_info.yml` -> 工具名 `playbook_collect_iaas_info`
 
 **描述生成**:
 基于元数据字段自动生成结构化描述:
@@ -368,9 +368,147 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 - 跳过没有 description 字段的 playbook
 - 在日志中记录警告信息
 
-## 11. 测试环境规格
+## 12. JWT 认证规格
 
-### 11.1 测试主机
+### 12.1 认证库
+
+使用 `PyJWT` 库实现 JWT 认证：
+
+| 属性     | 值              |
+| -------- | --------------- |
+| 库名     | PyJWT           |
+| 签名算法 | HS256           |
+| 特性     | 标准 JWT 实现   |
+
+### 12.2 JWT 结构
+
+**Header**:
+```json
+{"alg": "HS256", "typ": "JWT"}
+```
+
+**Payload**:
+| 字段 | 类型   | 必填 | 说明         |
+| ---- | ------ | ---- | ------------ |
+| sub  | string | 是   | 用户唯一标识 |
+| name | string | 是   | 用户名称     |
+| role | string | 是   | 用户角色     |
+| iat  | number | 是   | 签发时间戳   |
+| exp  | number | 否   | 过期时间戳   |
+
+### 12.3 角色权限配置
+
+**文件**: `etc/tsc_ansible_mcp.toml`
+
+```toml
+[auth]
+enabled = true
+jwt_secret_key_file = "etc/jwt_secret_key.txt"
+jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
+
+[auth.tool_permissions]
+admin = ["*"]
+user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
+```
+
+**权限配置说明**:
+- `*`: 表示所有工具
+- `playbook_*`: 表示所有动态生成的 playbook 工具（如 playbook_collect_iaas_info）
+
+**权限验证机制**:
+- MCP 工具列表根据角色过滤（v1.6.0 新增）
+- MCP 工具调用时验证用户权限
+- LLM 获取工具列表时，根据角色暴露可用工具
+- API 调用时验证用户权限
+- 日志中记录每个操作的用户名
+
+**MCP 工具角色过滤实现**（v1.6.0 新增）:
+
+使用 MCP 授权中间件实现工具列表过滤：
+
+| 组件 | 文件 | 功能 |
+|------|------|------|
+| 上下文传递 | `lib/context_vars.py` | 使用 contextvars 传递用户信息 |
+| 授权中间件 | `lib/middleware.py` | 拦截 MCP 请求，过滤工具列表 |
+| 权限检查 | `lib/jwt_utils.py` | check_permission 方法 |
+| 工具函数权限检查 | `lib/permission.py` | 工具函数内部的权限检查 |
+
+**双重保护机制**（v1.6.0 新增）:
+
+为了防止 LLM 通过其他方式（如历史对话、文档等）得知工具名称后尝试调用，实现了双重保护：
+
+1. **第一层：MCP 协议层面**
+   - 中间件拦截 `tools/list` 请求，过滤工具列表
+   - 中间件拦截 `tools/call` 请求，检查权限
+
+2. **第二层：工具函数内部**
+   - 每个 admin 专用工具函数内部都有权限检查
+   - 即使中间件失效，工具函数本身也会拒绝执行
+   - 实现"深度防御"（Defense in Depth）原则
+
+**工作流程**:
+1. MCP Client 发送请求（携带 JWT Token）
+2. 授权中间件提取并验证 JWT
+3. 设置用户上下文（role, name, sub）
+4. 拦截 `tools/list` 请求，根据角色过滤工具列表
+5. 拦截 `tools/call` 请求，检查工具调用权限（第一层保护）
+6. 工具函数内部再次检查权限（第二层保护）
+7. 记录审计日志
+
+### 12.4 密钥管理
+
+**文件**: `etc/jwt_secret_key.txt`
+
+- 单一密钥，简化管理
+- 密钥长度建议 >= 32 字符
+- 可通过更换密钥与其他认证系统对接
+
+### 12.5 JWT 签发记录
+
+**文件**: `etc/jwt_issued_tokens.json`
+
+```json
+{
+  "tokens": [
+    {
+      "jwt_id": "jwt_001",
+      "sub": "user_001",
+      "name": "张三",
+      "role": "admin",
+      "issued_at": "2026-04-07T10:00:00Z",
+      "expires_at": null,
+      "description": "管理员 Token",
+      "revoked": false
+    }
+  ]
+}
+```
+
+### 12.6 JWT 生成器
+
+**文件**: `bin/generate_jwt.py`
+
+| 命令                              | 功能                |
+| --------------------------------- | ------------------- |
+| --generate-key                    | 生成新密钥          |
+| --issue --sub <id> --name <name> --role <role> | 签发 JWT |
+| --issue ... --expires <duration>  | 签发带过期时间的JWT |
+| --list                            | 列出已签发 JWT      |
+| --verify <token>                  | 验证 JWT            |
+
+**撤销 JWT/密钥**：
+- 撤销 JWT：直接编辑 `etc/jwt_issued_tokens.json`，删除对应记录，重启服务
+- 更换密钥：直接编辑 `etc/jwt_secret_key.txt`，重启服务（会使所有已签发的 JWT 失效）
+
+### 12.7 审计日志格式
+
+```
+2026-04-07 18:50:57 | INFO | 认证成功: IP=127.0.0.1, User=张三(user_001), Role=admin
+```
+
+## 13. 测试环境规格
+
+### 13.1 测试主机
 
 | 属性 | 值                      |
 | ---- | ----------------------- |
@@ -381,16 +519,15 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 | 内核 | `3.10.0-693.el7.x86_64` |
 | 架构 | `x86_64`                |
 
-### 11.2 测试连接命令样例
+### 13.2 测试连接命令样例
 
 ```bash
 sshpass -vp JScz-320400 ssh root@192.168.19.35 -p 3204 -o 'PreferredAuthentications=password' -o 'PubkeyAuthentication=no'
 ```
 
-## 11. 相关文档
+## 14. 相关文档
 
 - [PRD 文档](./PRD.md)
 - [架构设计文档](./ARCHITECTURE.md)
 - [API 参考文档](./API-REFERENCE.md)
-- [开发任务清单](./TODO.md)
 - [开发任务清单](./TODO.md)

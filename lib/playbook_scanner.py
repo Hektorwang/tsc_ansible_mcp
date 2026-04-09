@@ -58,11 +58,13 @@ class PlaybookScanner:
             playbook_path: playbook 文件路径
         """
         playbook_name = playbook_path.stem
+        tool_name = f"playbook_{playbook_name}"
         metadata = self.parse_metadata(playbook_path)
 
         if metadata and metadata.get("description"):
+            metadata["tool_name"] = tool_name
             self.playbooks[playbook_name] = metadata
-            logger.info(f"加载 playbook: {playbook_name}")
+            logger.info(f"加载 playbook: {playbook_name} -> 工具名: {tool_name}")
         else:
             logger.warning(
                 f"跳过 playbook '{playbook_name}': 缺少必要的元数据（description 字段）"
