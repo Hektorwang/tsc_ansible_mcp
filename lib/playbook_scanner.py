@@ -13,7 +13,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from lib.config import Config
-from lib.logger import get_logger
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 

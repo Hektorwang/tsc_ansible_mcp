@@ -7,7 +7,7 @@ from functools import wraps
 from typing import Any, Callable, Dict, Optional
 
 from lib.context_vars import get_current_role
-from lib.logger import get_logger
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 

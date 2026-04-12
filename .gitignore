@@ -10,7 +10,7 @@ __pycache__
 /retries/*
 /sample
 /tmp/*
-/venv/*
+/.venv/*
 /galaxy_cache
 inventory.yml
 etc/tokens.txt

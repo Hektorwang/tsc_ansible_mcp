@@ -164,43 +164,7 @@ Content-Type: application/json
 }
 ```
 
-### 2.4 检查主机状态
 
-检查目标主机的连接状态，包括网络连通性、SSH 可达性、Python 可用性、tsc_tools 安装状态。
-
-**请求**:
-
-```http
-POST /api/v1/hosts/status
-Content-Type: application/json
-```
-
-**请求参数**:
-
-| 参数        | 类型          | 必填 | 说明             |
-| ----------- | ------------- | ---- | ---------------- |
-| targets     | array[string] | 是   | 目标主机 IP 列表 |
-| credentials | object        | 否   | SSH 凭据         |
-
-**响应示例**:
-
-```json
-{
-  "task_id": "job_12349",
-  "timestamp": "2026-04-05T10:30:00Z",
-  "results": {
-    "192.168.1.100": {
-      "overall_status": "ready",
-      "checks": [
-        {"name": "network", "status": "pass", "message": "网络可达"},
-        {"name": "ssh", "status": "pass", "message": "SSH 连接成功"},
-        {"name": "python", "status": "pass", "message": "Python 3.9.5 已安装"},
-        {"name": "tsc_tools", "status": "pass", "message": "tsc_tools 已安装"}
-      ]
-    }
-  }
-}
-```
 
 ### 2.5 Ansible Shell 命令
 
@@ -679,6 +643,74 @@ GET /health
 }
 ```
 
+### 2.18 获取配置
+
+获取当前服务配置。
+
+**请求**:
+
+```http
+GET /api/v1/config
+Content-Type: application/json
+Authorization: Bearer <token>
+```
+
+**响应示例**:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "mcp": {
+      "port": 8500,
+      "host": "0.0.0.0"
+    },
+    "logging": {
+      "level": "INFO"
+    }
+  }
+}
+```
+
+### 2.19 更新配置
+
+更新服务配置（需要管理员权限）。
+
+**请求**:
+
+```http
+PUT /api/v1/config
+Content-Type: application/json
+Authorization: Bearer <token>
+```
+
+**请求参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| mcp | object | 否 | MCP 配置 |
+| logging | object | 否 | 日志配置 |
+| execution | object | 否 | 执行配置 |
+
+**请求示例**:
+
+```json
+{
+  "logging": {
+    "level": "DEBUG"
+  }
+}
+```
+
+**响应示例**:
+
+```json
+{
+  "status": "success",
+  "message": "配置更新成功"
+}
+```
+
 ## 3. MCP 工具接口
 
 MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 REST API 接口说明。
@@ -693,7 +725,9 @@ MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 RE
 | `ansible_fetch`      | 调用 ansible fetch 模块，从远程主机获取文件    | 2.7           |
 | `list_playbooks`     | 列出可用的 playbook 文件，包含元数据说明       | 2.8           |
 | `ansible_playbook`   | 执行 playbook 文件                             | 2.9           |
-| `get_task_status`    | 查询任务状态                                   | 2.13          |
+| `get_task_detail`    | 查询特定主机在指定任务中的执行详情             | 2.13          |
+| `get_failed_hosts`   | 查询指定任务中所有失败主机的详情               | -             |
+| `get_all_results`    | 分页查询指定任务的所有主机执行结果             | -             |
 | `set_context`        | 设置上下文键值对                               | -             |
 | `get_context`        | 获取上下文值                                   | -             |
 | `delete_context`     | 删除指定的上下文键值对                         | -             |

@@ -18,7 +18,7 @@ import yaml
 from lib.ansible_logger import ansible_logger
 from lib.config import Config
 from lib.inventory_manager import InventoryManager
-from lib.logger import get_logger
+from lib.tsc_logger import get_logger
 from lib.task_result_store import task_result_store
 
 logger = get_logger()
@@ -31,6 +31,41 @@ class Executor:
         self.config = config
         self.inventory_manager = inventory_manager
         ansible_logger._setup_from_config(config)
+        # 任务队列管理：跟踪正在执行任务的主机
+        self._active_hosts: set = set()
+        # 用于线程安全的锁
+        import threading
+        self._lock = threading.Lock()
+
+    def _acquire_hosts(self, hosts: List[str]) -> tuple[bool, List[str]]:
+        """尝试获取主机的执行锁
+        
+        Args:
+            hosts: 需要获取锁的主机列表
+            
+        Returns:
+            (success, busy_hosts): 是否成功获取，以及繁忙的主机列表
+        """
+        with self._lock:
+            busy_hosts = [host for host in hosts if host in self._active_hosts]
+            if busy_hosts:
+                return False, busy_hosts
+            # 获取所有主机的锁
+            for host in hosts:
+                self._active_hosts.add(host)
+            return True, []
+
+    def _release_hosts(self, hosts: List[str]) -> None:
+        """释放主机的执行锁
+        
+        Args:
+            hosts: 需要释放锁的主机列表
+        """
+        with self._lock:
+            for host in hosts:
+                if host in self._active_hosts:
+                    self._active_hosts.remove(host)
+                    logger.debug(f"释放主机锁: {host}")
 
     def _build_summary_result(
         self,
@@ -177,33 +212,51 @@ class Executor:
 
         start_time = time.time()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            playbook_path = tmpdir_path / "playbook.yml"
-            inventory_path = tmpdir_path / "inventory.json"
-            playbook_path.write_text(json.dumps(playbook), encoding="utf-8")
-            inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
-            logger.debug(f"执行 playbook: {playbook_path}")
-            logger.debug(f"Inventory: {inventory_path}")
-            result = ansible_runner.run(
-                playbook=str(playbook_path),
-                inventory=str(inventory_path),
-                quiet=True,
-                timeout=timeout,
-                extravars=extravars,
-            )
+        # 创建临时目录（使用绝对路径）
+        base_dir = Path.cwd()
+        tmpdir_path = base_dir / "tmp" / f"ansible_{task_id}"
+        tmpdir_path.mkdir(parents=True, exist_ok=True)
+        playbook_path = tmpdir_path / "playbook.yml"
+        inventory_path = tmpdir_path / "inventory.json"
+        
+        # 确保 playbook 是一个 YAML 格式的字符串，而不是 JSON
+        playbook_content = yaml.dump(playbook, allow_unicode=True)
+        playbook_path.write_text(playbook_content, encoding="utf-8")
+        inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
+        
+        logger.debug(f"执行 playbook: {playbook_path}")
+        logger.debug(f"Inventory: {inventory_path}")
+        logger.info(f"开始执行 Ansible playbook: {playbook_path}")
+        logger.info(f"使用 inventory: {inventory_path}")
+        logger.info(f"目标主机: {list(inventory.get('all', {}).get('hosts', {}).keys())}")
+        
+        result = ansible_runner.run(
+            playbook=str(playbook_path),
+            inventory=str(inventory_path),
+            quiet=False,  # 改为 False，以便查看详细输出
+            timeout=timeout,
+            extravars=extravars,
+        )
+        
+        # 将 events 转换为列表，因为 ansible_runner 返回的是 generator
+        events = list(result.events)
+        
+        logger.info(f"Ansible 执行完成，返回码: {result.rc}")
+        logger.info(f"Ansible 执行事件数量: {len(events)}")
+        logger.info(f"Ansible 执行统计信息: {result.stats}")
 
         elapsed = time.time() - start_time
 
-        for event in result.events:
-            event_type = event.get("event", "")
-            event_data = event.get("event_data", {})
+        # 只记录关键事件，减少日志开销，并同时计算统计信息
+        total_hosts = len(inventory.get("all", {}).get("hosts", {}))
+        success_count = 0
+        failed_count = 0
+        unreachable_count = 0
 
-            if event_type in [
-                "runner_on_ok",
-                "runner_on_failed",
-                "runner_on_unreachable",
-            ]:
+        for event in events:
+            event_type = event.get("event", "")
+            if event_type in ["runner_on_failed", "runner_on_unreachable"]:
+                event_data = event.get("event_data", {})
                 host = event_data.get("host", "")
                 task_name = event_data.get("task", "")
                 res = event_data.get("res", {})
@@ -215,14 +268,8 @@ class Executor:
                     task_name=task_name,
                     result=res,
                 )
-
-        total_hosts = len(inventory.get("all", {}).get("hosts", {}))
-        success_count = 0
-        failed_count = 0
-        unreachable_count = 0
-
-        for event in result.events:
-            event_type = event.get("event", "")
+            
+            # 同时计算统计信息
             if event_type == "runner_on_ok":
                 success_count += 1
             elif event_type == "runner_on_failed":
@@ -248,7 +295,7 @@ class Executor:
             },
             elapsed=elapsed,
         )
-
+        
         return result
 
     def _parse_wrapper_output(self, output: str) -> Dict[str, Any]:
@@ -300,11 +347,14 @@ class Executor:
 
         result = self._run_ansible(playbook, inventory, timeout)
 
+        # 将 events 转换为列表，因为 ansible_runner 返回的是 generator
+        events = list(result.events)
+
         connectivity = {}
         for host in targets:
             connectivity[host] = False
 
-        for event in result.events:
+        for event in events:
             event_type = event.get("event", "")
             if event_type == "runner_on_ok":
                 host = event.get("event_data", {}).get("host", "")
@@ -323,8 +373,10 @@ class Executor:
         results = {}
         for host in hosts:
             results[host] = {"rc": -1, "stdout": "", "stderr": "", "elapsed": "0s"}
+        # 将 events 转换为列表，因为 ansible_runner 返回的是 generator
+        events = list(result.events)
         if result.rc == 0:
-            for event in result.events:
+            for event in events:
                 if event.get("event") == "runner_on_ok":
                     host = event.get("event_data", {}).get("host", "")
                     res = event.get("event_data", {}).get("res", {})
@@ -340,7 +392,7 @@ class Executor:
                             "elapsed": "0s",
                         }
         else:
-            for event in result.events:
+            for event in events:
                 if event.get("event") in ["runner_on_failed", "runner_on_unreachable"]:
                     host = event.get("event_data", {}).get("host", "")
                     res = event.get("event_data", {}).get("res", {})
@@ -369,7 +421,31 @@ class Executor:
             f"凭据信息: user={credentials.get('user') if credentials else None}, port={credentials.get('port') if credentials else None}"
         )
 
+        # 检查主机是否繁忙
+        acquired, busy_hosts = self._acquire_hosts(targets)
+        if not acquired:
+            logger.warning(f"以下主机正在执行任务，拒绝请求: {busy_hosts}")
+            return {
+                "task_id": task_id or str(uuid.uuid4()),
+                "status": "failed",
+                "summary": {
+                    "total": len(targets),
+                    "success": 0,
+                    "error": len(targets),
+                },
+                "results": {
+                    host: {
+                        "error": f"主机 {host} 正在执行任务，请稍后再试",
+                        "error_type": "host_busy"
+                    }
+                    for host in targets
+                },
+            }
+
         install_path = self.config.tsc_tools_install_path
+
+        # 最终使用的 inventory
+        final_inventory = None
 
         if credentials:
             logger.info("使用 LLM 提供的凭据测试连接...")
@@ -383,6 +459,7 @@ class Executor:
 
             if failed_hosts:
                 logger.warning(f"LLM 凭据连接失败的主机: {failed_hosts}")
+                # 尝试使用缓存的凭据
                 cached_inventory = self._build_inventory(
                     targets, credentials=None, use_cached=True
                 )
@@ -390,11 +467,19 @@ class Executor:
                     targets, cached_inventory, timeout
                 )
 
-                for host in failed_hosts:
-                    if cached_test_result.get(host, False):
-                        logger.info(f"主机 {host} 使用缓存凭据连接成功，将使用缓存信息")
-                    else:
-                        logger.warning(f"主机 {host} 缓存凭据也连接失败")
+                # 检查哪些主机使用缓存凭据成功
+                cached_success_hosts = [h for h, success in cached_test_result.items() if success]
+                if cached_success_hosts:
+                    logger.info(f"使用缓存凭据连接成功的主机: {cached_success_hosts}")
+                    # 使用缓存的 inventory
+                    final_inventory = cached_inventory
+                else:
+                    logger.warning("所有主机使用缓存凭据也连接失败")
+                    # 继续使用 LLM 提供的凭据
+                    final_inventory = inventory
+            else:
+                # 所有主机使用 LLM 凭据连接成功
+                final_inventory = inventory
 
             for host in success_hosts:
                 self.inventory_manager.update_host_credentials(
@@ -405,189 +490,197 @@ class Executor:
                     private_key=credentials.get("private_key"),
                 )
                 logger.info(f"主机 {host} 验证成功，已更新 inventory")
+        else:
+            # 没有提供凭据，使用缓存的 inventory
+            final_inventory = self._build_inventory(targets, credentials=None, use_cached=True)
 
-        inventory = self._build_inventory(targets, credentials=None, use_cached=True)
+        # 确保 final_inventory 不为 None
+        if final_inventory is None:
+            final_inventory = self._build_inventory(targets, credentials=None, use_cached=True)
+
+        inventory = final_inventory
         logger.debug(f"最终使用的 inventory: {inventory}")
 
-        playbook = [
-            {
-                "name": "Check host status",
-                "hosts": "all",
-                "gather_facts": False,
-                "serial": self.config.execution_serial,
-                "tasks": [
-                    {
-                        "name": "Detect architecture",
-                        "ansible.builtin.raw": "uname -m",
-                        "register": "arch_result",
-                        "changed_when": False,
-                    },
-                    {
-                        "name": "Detect distribution",
-                        "ansible.builtin.raw": "cat /etc/os-release 2>/dev/null || echo 'ID=unknown'",
-                        "register": "distro_result",
-                        "changed_when": False,
-                    },
-                    {
-                        "name": "Check Python3",
-                        "ansible.builtin.raw": f"if test -x {install_path}/micromamba/envs/tsc_python/bin/python3; then echo '{install_path}/micromamba/envs/tsc_python/bin/python3'; elif command -v python3 >/dev/null 2>&1; then command -v python3; else echo 'not_found'; fi",
-                        "register": "python_check",
-                        "changed_when": False,
-                        "failed_when": False,
-                    },
-                    {
-                        "name": "Get Python version",
-                        "ansible.builtin.raw": f"if test -x {install_path}/micromamba/envs/tsc_python/bin/python3; then {install_path}/micromamba/envs/tsc_python/bin/python3 --version 2>/dev/null; elif command -v python3 >/dev/null 2>&1; then python3 --version 2>/dev/null; else echo 'not_installed'; fi",
-                        "register": "python_version",
-                        "changed_when": False,
-                        "failed_when": False,
-                    },
-                    {
-                        "name": "Check tsc_tools",
-                        "ansible.builtin.raw": f"test -d {install_path}/ && test -f {install_path}/release-note.md && echo 'installed' || echo 'not_installed'",
-                        "register": "tsc_tools_check",
-                        "changed_when": False,
-                        "failed_when": False,
-                    },
-                ],
+        try:
+            playbook = [
+                {
+                    "name": "Check host status",
+                    "hosts": "all",
+                    "gather_facts": False,
+                    "serial": self.config.execution_serial,
+                    "tasks": [
+                        {
+                            "name": "Detect architecture",
+                            "ansible.builtin.raw": "uname -m",
+                            "register": "arch_result",
+                            "changed_when": False,
+                        },
+                        {
+                            "name": "Detect distribution",
+                            "ansible.builtin.raw": "cat /etc/os-release 2>/dev/null || echo 'ID=unknown'",
+                            "register": "distro_result",
+                            "changed_when": False,
+                        },
+                        {
+                            "name": "Check Python3",
+                            "ansible.builtin.raw": "if test -x /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3; then echo '/home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3'; elif command -v python3 >/dev/null 2>&1; then command -v python3; else echo 'not_found'; fi",
+                            "register": "python_check",
+                            "changed_when": False,
+                            "failed_when": False,
+                        },
+                        {
+                            "name": "Get Python version",
+                            "ansible.builtin.raw": "if test -x /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3; then /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3 --version 2>/dev/null; elif command -v python3 >/dev/null 2>&1; then python3 --version 2>/dev/null; else echo 'not_installed'; fi",
+                            "register": "python_version",
+                            "changed_when": False,
+                            "failed_when": False,
+                        },
+                        {
+                            "name": "Check tsc_tools",
+                            "ansible.builtin.raw": "if test -x /home/tsc/tsc_tools/tsc && test -e /home/tsc/tsc_tools/release-note.md; then echo 'installed'; else echo 'not_installed'; fi",
+                            "register": "tsc_tools_check",
+                            "changed_when": False,
+                            "failed_when": False,
+                        },
+                    ],
+                }
+            ]
+            
+            result = self._run_ansible(playbook, inventory, timeout)
+            # 将 events 转换为列表，因为 ansible_runner 返回的是 generator
+            events = list(result.events)
+            logger.debug(f"Ansible 执行返回码: {result.rc}")
+            logger.debug(f"Ansible 执行事件数量: {len(events)}")
+            # 打印前几个事件的详细信息
+            for i, event in enumerate(events[:5]):
+                logger.debug(f"事件 {i}: {event.get('event')}, 主机: {event.get('event_data', {}).get('host')}, 任务: {event.get('event_data', {}).get('task')}")
+            results = {}
+            for host in targets:
+                results[host] = {
+                    "arch": "",
+                    "arch_raw": "",
+                    "distro": "",
+                    "distro_raw": "",
+                    "python_installed": False,
+                    "python_version": "",
+                    "python_path": "",
+                    "tsc_python_installed": False,
+                    "tsc_tools_installed": False,
+                }
+            for event in events:
+                event_type = event.get("event", "")
+                logger.debug(f"处理事件: {event_type}")
+                if event_type == "runner_on_ok":
+                    event_data = event.get("event_data", {})
+                    host = event_data.get("host", "")
+                    task = event_data.get("task", "")
+                    res = event_data.get("res", {})
+                    logger.debug(f"主机 {host} 任务 '{task}' 执行成功, rc={res.get('rc')}")
+                    if host in results:
+                        if "Detect architecture" in task:
+                            arch_raw = res.get("stdout", "").strip()
+                            results[host]["arch_raw"] = arch_raw
+                            results[host]["arch"] = self.config.normalize_architecture(
+                                arch_raw
+                            )
+                            logger.info(
+                                f"主机 {host} 架构: raw={arch_raw}, normalized={results[host]['arch']}"
+                            )
+                        elif "Detect distribution" in task:
+                            distro_raw = res.get("stdout", "").strip()
+                            results[host]["distro_raw"] = distro_raw
+                            id_match = re.search(r'ID="?([^"\s]+)"?', distro_raw)
+                            if id_match:
+                                distro_id = id_match.group(1)
+                                normalized_distro = self.config.normalize_distribution(
+                                    distro_id
+                                )
+                                results[host]["distro"] = normalized_distro
+                                logger.info(
+                                    f"主机 {host} 发行版: id={distro_id}, normalized={normalized_distro}"
+                                )
+                        elif "Check Python3" in task:
+                            python_path = res.get("stdout", "").strip()
+                            results[host]["python_installed"] = (
+                                python_path and "not_found" not in python_path
+                            )
+                            if results[host]["python_installed"]:
+                                results[host]["python_path"] = python_path
+                                # 检查是否为 tsc_python
+                                results[host]["tsc_python_installed"] = (
+                                    "/tsc_tools/micromamba/envs/tsc_python/bin/python3" in python_path
+                                )
+                                self.inventory_manager.update_python_interpreter(
+                                    host, python_path
+                                )
+                                logger.info(f"主机 {host} Python 路径: {python_path}")
+                                logger.info(
+                                    f"主机 {host} tsc_python: {'已安装' if results[host]['tsc_python_installed'] else '未安装'}"
+                                )
+                            else:
+                                logger.info(f"主机 {host} Python 未安装")
+                        elif "Get Python version" in task:
+                            version = res.get("stdout", "").strip()
+                            results[host]["python_version"] = (
+                                version
+                                if version and "not_installed" not in version
+                                else ""
+                            )
+                            if results[host]["python_version"]:
+                                logger.info(
+                                    f"主机 {host} Python 版本: {results[host]['python_version']}"
+                                )
+                        elif "Check tsc_tools" in task:
+                            tsc_tools_output = res.get("stdout", "").strip()
+                            results[host]["tsc_tools_installed"] = (
+                                tsc_tools_output == "installed"
+                            )
+                            logger.info(
+                                f"主机 {host} tsc_tools: {'已安装' if results[host]['tsc_tools_installed'] else '未安装'}"
+                            )
+                elif event_type in ["runner_on_failed", "runner_on_unreachable"]:
+                    event_data = event.get("event_data", {})
+                    host = event_data.get("host", "")
+                    task = event_data.get("task", "")
+                    res = event_data.get("res", {})
+                    error_msg = res.get("msg", "未知错误")
+                    logger.warning(f"主机 {host} 任务 '{task}' 执行失败: {error_msg}")
+                    if host in results:
+                        results[host]["error"] = "主机不可达"
+                        results[host]["tsc_tools_installed"] = False
+                        results[host]["python_installed"] = False
+                        logger.error(f"主机 {host} 不可达，跳过后续检查")
+            for host, host_result in results.items():
+                logger.info(
+                    f"主机 {host} 状态汇总: arch={host_result.get('arch')}, "
+                    f"distro={host_result.get('distro')}, "
+                    f"python_installed={host_result.get('python_installed')}, "
+                    f"tsc_tools_installed={host_result.get('tsc_tools_installed')}"
+                )
+
+            final_task_id = task_id or str(uuid.uuid4())
+            task_result_store.save_result(final_task_id, {"results": results, "elapsed": 0})
+
+            total = len(results)
+            error_count = sum(1 for r in results.values() if r.get("error"))
+            success_count = total - error_count
+
+            return {
+                "task_id": final_task_id,
+                "status": "success" if error_count == 0 else "partial_success",
+                "summary": {
+                    "total": total,
+                    "success": success_count,
+                    "error": error_count,
+                },
+                "results": results,
             }
-        ]
-        result = self._run_ansible(playbook, inventory, timeout)
-        logger.debug(f"Ansible 执行返回码: {result.rc}")
-        results = {}
-        for host in targets:
-            results[host] = {
-                "arch": "",
-                "arch_raw": "",
-                "distro": "",
-                "distro_raw": "",
-                "python_installed": False,
-                "python_version": "",
-                "python_path": "",
-                "tsc_python_installed": False,
-                "tsc_tools_installed": False,
-            }
-        for event in result.events:
-            event_type = event.get("event", "")
-            logger.debug(f"处理事件: {event_type}")
-            if event_type == "runner_on_ok":
-                event_data = event.get("event_data", {})
-                host = event_data.get("host", "")
-                task = event_data.get("task", "")
-                res = event_data.get("res", {})
-                logger.debug(f"主机 {host} 任务 '{task}' 执行成功, rc={res.get('rc')}")
-                if host in results:
-                    if "Detect architecture" in task:
-                        arch_raw = res.get("stdout", "").strip()
-                        results[host]["arch_raw"] = arch_raw
-                        results[host]["arch"] = self.config.normalize_architecture(
-                            arch_raw
-                        )
-                        logger.info(
-                            f"主机 {host} 架构: raw={arch_raw}, normalized={results[host]['arch']}"
-                        )
-                    elif "Detect distribution" in task:
-                        distro_raw = res.get("stdout", "").strip()
-                        results[host]["distro_raw"] = distro_raw
-                        id_match = re.search(r'ID="?([^"\s]+)"?', distro_raw)
-                        if id_match:
-                            distro_id = id_match.group(1)
-                            normalized_distro = self.config.normalize_distribution(
-                                distro_id
-                            )
-                            results[host]["distro"] = normalized_distro
-                            logger.info(
-                                f"主机 {host} 发行版: id={distro_id}, normalized={normalized_distro}"
-                            )
-                    elif "Check Python3" in task:
-                        python_path = res.get("stdout", "").strip()
-                        results[host]["python_installed"] = (
-                            python_path and "not_found" not in python_path
-                        )
-                        if results[host]["python_installed"]:
-                            results[host]["python_path"] = python_path
-                            tsc_python_path = (
-                                f"{install_path}/micromamba/envs/tsc_python/bin/python3"
-                            )
-                            results[host]["tsc_python_installed"] = (
-                                python_path == tsc_python_path
-                            )
-                            self.inventory_manager.update_python_interpreter(
-                                host, python_path
-                            )
-                            logger.info(f"主机 {host} Python 路径: {python_path}")
-                            logger.info(
-                                f"主机 {host} tsc_python: {'已安装' if results[host]['tsc_python_installed'] else '未安装'}"
-                            )
-                        else:
-                            logger.info(f"主机 {host} Python 未安装")
-                    elif "Get Python version" in task:
-                        version = res.get("stdout", "").strip()
-                        results[host]["python_version"] = (
-                            version
-                            if version and "not_installed" not in version
-                            else ""
-                        )
-                        if results[host]["python_version"]:
-                            logger.info(
-                                f"主机 {host} Python 版本: {results[host]['python_version']}"
-                            )
-                    elif "Check tsc_tools" in task:
-                        tsc_tools_output = res.get("stdout", "").strip()
-                        results[host]["tsc_tools_installed"] = (
-                            tsc_tools_output == "installed"
-                        )
-                        logger.info(
-                            f"主机 {host} tsc_tools: {'已安装' if results[host]['tsc_tools_installed'] else '未安装'}"
-                        )
-            elif event_type in ["runner_on_failed", "runner_on_unreachable"]:
-                event_data = event.get("event_data", {})
-                host = event_data.get("host", "")
-                task = event_data.get("task", "")
-                res = event_data.get("res", {})
-                error_msg = res.get("msg", "未知错误")
-                logger.warning(f"主机 {host} 任务 '{task}' 执行失败: {error_msg}")
-                if host in results:
-                    results[host]["error"] = "主机不可达"
-                    results[host]["tsc_tools_installed"] = False
-                    results[host]["python_installed"] = False
-                    logger.error(f"主机 {host} 不可达，跳过后续检查")
-        for host, host_result in results.items():
-            logger.info(
-                f"主机 {host} 状态汇总: arch={host_result.get('arch')}, "
-                f"distro={host_result.get('distro')}, "
-                f"python_installed={host_result.get('python_installed')}, "
-                f"tsc_tools_installed={host_result.get('tsc_tools_installed')}"
-            )
+        finally:
+            # 无论执行成功或失败，都释放主机锁
+            self._release_hosts(targets)
 
-        final_task_id = task_id or str(uuid.uuid4())
-        task_result_store.save_result(final_task_id, {"results": results, "elapsed": 0})
-
-        total = len(results)
-        error_count = sum(1 for r in results.values() if r.get("error"))
-        success_count = total - error_count
-
-        return {
-            "task_id": final_task_id,
-            "status": "success" if error_count == 0 else "partial_success",
-            "summary": {
-                "total": total,
-                "success": success_count,
-                "error": error_count,
-            },
-            "results": results,
-        }
-
-    def install_python(
-        self,
-        targets: List[str],
-        credentials: Optional[Dict[str, Any]] = None,
-        version: Optional[str] = None,
-        date: Optional[str] = None,
-        timeout: Optional[int] = None,
-        task_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        logger.info(f"安装 Python: {targets}")
+    def _check_hosts_reachability(self, targets: List[str], credentials: Optional[Dict[str, Any]], timeout: Optional[int]) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
+        """检查主机可达性并返回结果"""
         detect_result = self.check_host_status(targets, credentials, timeout)
         logger.info(f"环境探测结果: {detect_result['results']}")
         results = {}
@@ -599,8 +692,22 @@ class Executor:
                     "message": f"主机不可达: {env_info.get('error')}",
                     "error": env_info.get("error"),
                 }
-                logger.warning(f"主机 {host} 不可达，跳过安装")
-            elif env_info.get("tsc_python_installed"):
+                logger.warning(f"主机 {host} 不可达，跳过操作")
+        return results, detect_result
+
+    def install_python(
+        self,
+        targets: List[str],
+        credentials: Optional[Dict[str, Any]] = None,
+        timeout: Optional[int] = None,
+        task_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        logger.info(f"安装 Python: {targets}")
+        results, detect_result = self._check_hosts_reachability(targets, credentials, timeout)
+        
+        # 检查是否已安装
+        for host, env_info in detect_result["results"].items():
+            if host not in results and env_info.get("tsc_python_installed"):
                 results[host] = {
                     "installed": False,
                     "skipped": True,
@@ -609,6 +716,7 @@ class Executor:
                     "python_path": env_info.get("python_path", ""),
                 }
                 logger.info(f"主机 {host} tsc_python 已安装，跳过")
+        
         hosts_need_install = [h for h in targets if h not in results]
         if not hosts_need_install:
             final_task_id = task_id or str(uuid.uuid4())
@@ -631,7 +739,7 @@ class Executor:
                 )
                 continue
             install_url = self.config.get_python_install_url(
-                distro, arch, version, date
+                distro, arch
             )
             logger.info(
                 f"主机 {host} 安装信息: arch={arch}, distro={distro}, url={install_url}"
@@ -752,8 +860,6 @@ class Executor:
         self,
         targets: List[str],
         credentials: Optional[Dict[str, Any]] = None,
-        version: Optional[str] = None,
-        date: Optional[str] = None,
         timeout: Optional[int] = None,
         task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -830,7 +936,7 @@ class Executor:
         if not hosts_need_install:
             final_task_id = task_id or str(uuid.uuid4())
             return {"task_id": final_task_id, "results": results}
-        install_url = self.config.get_tsc_tools_install_url(version, date)
+        install_url = self.config.get_tsc_tools_install_url()
         logger.info(f"安装 tsc_tools, url={install_url}")
         install_playbook = [
             {
@@ -1356,7 +1462,7 @@ echo "ELAPSED_TIME:$elapsed"
                 metadata["description"] = " ".join(description_lines)
 
         except Exception as e:
-            logger.warning(f"解析 playbook 元数据失败: {playbook_path}, 错误: {e}")
+            logger.exception(f"解析 playbook 元数据失败: {playbook_path}, 错误: {e}")
         return metadata
 
     def _extract_json_metadata(self, content: str) -> Optional[Dict[str, Any]]:
@@ -1398,10 +1504,10 @@ echo "ELAPSED_TIME:$elapsed"
             return metadata
 
         except json.JSONDecodeError as e:
-            logger.debug(f"JSON 元数据解析失败: {e}")
+            logger.exception(f"JSON 元数据解析失败: {e}")
             return None
         except Exception as e:
-            logger.debug(f"提取 JSON 元数据失败: {e}")
+            logger.exception(f"提取 JSON 元数据失败: {e}")
             return None
 
     def list_playbooks(self) -> Dict[str, Any]:

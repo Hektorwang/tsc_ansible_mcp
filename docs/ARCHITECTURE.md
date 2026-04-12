@@ -61,7 +61,7 @@ Nginx (提供安装包)
 
 ### 3.1 任务状态存储 (SQLite)
 
-**存储路径**：`logs/tsc_semaphore.db`
+**存储路径**：`logs/tsc_ansible_mcp.db`
 
 **表结构**：
 

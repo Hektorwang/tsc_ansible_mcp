@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from lib.logger import get_logger
+from lib.tsc_logger import get_logger
 from lib.models import Base, Task, Context
 
 logger = get_logger()
@@ -65,7 +65,7 @@ class TaskRepository:
         self.db = db
 
     def create(self, task_id: str, task_type: str, parameters: Dict[str, Any]) -> None:
-        now = datetime.now().isoformat()
+        now = datetime.now()
         with self.db.get_session() as session:
             task = Task(
                 id=task_id,
@@ -82,7 +82,7 @@ class TaskRepository:
     def update(
         self, task_id: str, status: str, result: Optional[Dict[str, Any]] = None
     ) -> None:
-        now = datetime.now().isoformat()
+        now = datetime.now()
         with self.db.get_session() as session:
             task = session.query(Task).filter(Task.id == task_id).first()
             if task:
@@ -104,8 +104,8 @@ class TaskRepository:
                 "parameters": json.loads(task.parameters) if task.parameters else {},
                 "status": task.status,
                 "result": json.loads(task.result) if task.result else None,
-                "created_at": task.created_at,
-                "updated_at": task.updated_at,
+                "created_at": task.created_at.isoformat(),
+                "updated_at": task.updated_at.isoformat(),
             }
 
     def list(
@@ -128,8 +128,8 @@ class TaskRepository:
                         ),
                         "status": task.status,
                         "result": json.loads(task.result) if task.result else None,
-                        "created_at": task.created_at,
-                        "updated_at": task.updated_at,
+                        "created_at": task.created_at.isoformat(),
+                        "updated_at": task.updated_at.isoformat(),
                     }
                 )
             logger.debug(f"查询任务列表: 状态={status}, 数量={len(result)}")
@@ -147,9 +147,9 @@ class TaskRepository:
     def cleanup_expired(self, expiry_hours: int = 24) -> int:
         expiry_seconds = expiry_hours * 3600
         cutoff_time = datetime.now().timestamp() - expiry_seconds
-        cutoff_iso = datetime.fromtimestamp(cutoff_time).isoformat()
+        cutoff_datetime = datetime.fromtimestamp(cutoff_time)
         with self.db.get_session() as session:
-            count = session.query(Task).filter(Task.created_at < cutoff_iso).delete()
+            count = session.query(Task).filter(Task.created_at < cutoff_datetime).delete()
         logger.info(f"清理过期任务: 删除 {count} 条记录")
         return count
 
@@ -206,7 +206,7 @@ class ContextRepository:
 
     def set(self, key: str, value: str) -> None:
         """设置上下文"""
-        now = datetime.now().isoformat()
+        now = datetime.now()
         with self.db.get_session() as session:
             context = session.query(Context).filter(Context.key == key).first()
             if context:

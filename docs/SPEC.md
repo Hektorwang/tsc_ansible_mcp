@@ -4,7 +4,7 @@
 
 ### 1.1 Runtime Environment
 
-- **Python Version**: `3.13`. A virtual environment is provided at the project root: `venv`.
+- **Python Version**: `3.13`. A virtual environment is provided at the project root: `.venv`.
 - **Local Bash**: Version `5` or higher.
 - **Target Host Bash**: Version `4` or higher.
 

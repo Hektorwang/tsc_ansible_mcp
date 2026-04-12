@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 import jwt
 
-from lib.logger import get_logger
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 

@@ -12,7 +12,7 @@ import time
 
 import yaml
 
-from lib.logger import get_logger
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 

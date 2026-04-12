@@ -14,7 +14,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from lib.config import Config
 from lib.jwt_utils import JWTUtils
-from lib.logger import get_logger
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 

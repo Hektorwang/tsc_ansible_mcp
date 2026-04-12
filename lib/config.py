@@ -5,11 +5,15 @@
 """
 
 import re
-import tomllib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 
 
 class Config:
@@ -22,7 +26,46 @@ class Config:
         self.path = Path(config_path)
         self._data = self._load()
         self._package_cache: Dict[str, Any] = {}
+        self._last_modified = self.path.stat().st_mtime if self.path.exists() else 0
         self._scan_packages()
+        self._validate_config()
+
+    def _check_for_updates(self) -> bool:
+        """检查配置文件是否有更新"""
+        if not self.path.exists():
+            return False
+        current_mtime = self.path.stat().st_mtime
+        if current_mtime > self._last_modified:
+            self._last_modified = current_mtime
+            self._data = self._load()
+            self._validate_config()
+            return True
+        return False
+
+    def _validate_config(self) -> None:
+        """验证配置值的正确性"""
+        # 验证超时设置
+        default_timeout = self.get("mcp.default_timeout", 600)
+        max_timeout = self.get("mcp.max_timeout", 3600)
+        if default_timeout > max_timeout:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"默认超时值 ({default_timeout}) 大于最大超时值 ({max_timeout})，将使用最大超时值")
+        
+        # 验证执行设置
+        forks = self.get("execution.forks", 10)
+        if forks < 1 or forks > 100:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"forks 值 ({forks}) 不在合理范围内 (1-100)，将使用默认值 10")
+        
+        # 验证日志级别
+        log_level = self.get("logging.level", "INFO").upper()
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        if log_level not in valid_levels:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"日志级别 ({log_level}) 无效，将使用默认值 INFO")
 
     def _load(self) -> Dict[str, Any]:
         if self.path.exists():
@@ -66,23 +109,42 @@ class Config:
                 "default_timeout": 600,
                 "max_timeout": 3600,
             },
-            "nginx": {
+            "tsc_repo": {
                 "base_url": "http://192.168.19.22",
                 "python_version": "0.9.5",
                 "python_date": "20260330",
                 "local_path": "/home/tsc/cicd/html",
+                "tsc_tools_version": "2.0.3.beta10",
+                "tsc_tools_date": "20260210",
+                "tsc_tools_install_path": "/home/tsc/tsc_tools",
+                "tsc_python_url_template": "/tsc_python-{version}-{distro}-{arch}-{date}.sh",
+                "tsc_tools_url_template": "/tsc_tools-{version}-noarch-{date}.sh",
             },
             "execution": {
                 "timeout": 300,
                 "forks": 10,
                 "serial": 10,
+                "connection_timeout": 30,
+                "max_failed_detail": 10,
+                "max_output_length": 1000,
+                "result_store_dir": "logs/task_results",
             },
             "playbooks": {
                 "path": "playbooks",
             },
+            "logging": {
+                "dir": "logs",
+                "level": "INFO",
+                "ansible_execution_log": "ansible_execution.log",
+                "ansible_execution_enabled": True,
+                "ansible_execution_retention": "30 days",
+                "ansible_execution_rotation": "50 MB",
+            },
         }
 
     def get(self, key: str, default: Any = None) -> Any:
+        # 检查配置文件是否有更新
+        self._check_for_updates()
         keys = key.split(".")
         value = self._data
         for k in keys:
@@ -324,8 +386,8 @@ class Config:
         )
 
         url_path = self.tsc_python_url_template.format(
-            version="0.9.5",
-            date="20260330",
+            version=self.nginx_python_version,
+            date=self.nginx_python_date,
             distro=normalized_distro,
             arch=normalized_arch,
         )
@@ -342,16 +404,52 @@ class Config:
             return self._package_cache["tsc_tools"]["latest"]["url"]
 
         url_path = self.tsc_tools_url_template.format(
-            version="2.0.3.beta10", date="20260210"
+            version=self.tsc_tools_version, date=self.tsc_tools_date
         )
         return f"{self.nginx_base_url}{url_path}"
 
     def is_high_risk_command(self, command: str) -> bool:
+        """检查命令是否为高危命令
+        
+        增强的高危命令检查，支持：
+        1. 检测完整路径（如 /usr/bin/rm）
+        2. 检测命令参数中的高危操作
+        3. 检测管道和重定向等复杂命令
+        4. 检测常见的绕过技巧
+        """
         command_lower = command.strip().lower()
-        for risk_cmd in self.high_risk_commands:
+        
+        # 常见的高危命令列表
+        high_risk_cmds = [
+            "rm", "unlink", "halt", "shutdown", "mkfs", "parted", 
+            "reboot", "poweroff", "init", "dd", "format", "shred"
+        ]
+        
+        # 从配置中获取高危命令列表
+        config_risk_cmds = self.high_risk_commands
+        if config_risk_cmds:
+            high_risk_cmds.extend(config_risk_cmds)
+        
+        # 检查命令是否包含高危命令
+        for risk_cmd in high_risk_cmds:
+            # 检查完整路径（如 /usr/bin/rm）
+            if f"/{risk_cmd}" in command_lower:
+                return True
+            
+            # 检查命令部分（如 rm）
             cmd_parts = command_lower.split()
             if risk_cmd in cmd_parts:
                 return True
+            
+            # 检查管道和重定向中的命令
+            if "|" in command_lower or ">" in command_lower or "<" in command_lower:
+                # 分割命令并检查每个部分
+                parts = command_lower.split("|") + command_lower.split(">") + command_lower.split("<")
+                for part in parts:
+                    part_parts = part.strip().split()
+                    if risk_cmd in part_parts:
+                        return True
+        
         return False
 
     @property
@@ -395,3 +493,55 @@ class Config:
     @property
     def result_store_dir(self) -> str:
         return self.execution_settings.get("result_store_dir", "logs/task_results")
+
+    class TimeoutConfig:
+        """超时配置类"""
+
+        def __init__(self, config):
+            self.config = config
+
+        @property
+        def default_timeout(self) -> int:
+            """默认执行超时"""
+            return self.config.get("mcp.default_timeout", 600)
+
+        @property
+        def max_timeout(self) -> int:
+            """最大允许超时"""
+            return self.config.get("mcp.max_timeout", 3600)
+
+        @property
+        def task_timeout(self) -> int:
+            """Ansible 任务超时"""
+            return self.config.get("execution.timeout", 600)
+
+        @property
+        def connection_timeout(self) -> int:
+            """SSH 连接超时"""
+            return self.config.get("execution.connection_timeout", 30)
+
+        def get_timeout(self, timeout_type: str, requested_timeout: Optional[int] = None) -> int:
+            """获取超时值
+
+            Args:
+                timeout_type: 超时类型 (default, task, connection)
+                requested_timeout: 请求的超时值
+
+            Returns:
+                计算后的超时值
+            """
+            if requested_timeout is not None:
+                # 确保不超过最大超时
+                return min(requested_timeout, self.max_timeout)
+
+            timeout_map = {
+                "default": self.default_timeout,
+                "task": self.task_timeout,
+                "connection": self.connection_timeout
+            }
+            return timeout_map.get(timeout_type, self.default_timeout)
+
+    @property
+    def timeout_config(self) -> TimeoutConfig:
+        """超时配置"""
+        return self.TimeoutConfig(self)
