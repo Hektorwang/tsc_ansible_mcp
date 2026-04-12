@@ -15,9 +15,11 @@ from typing import Any, Dict, List, Optional
 import ansible_runner
 import yaml
 
+from lib.ansible_logger import ansible_logger
 from lib.config import Config
 from lib.inventory_manager import InventoryManager
 from lib.logger import get_logger
+from lib.task_result_store import task_result_store
 
 logger = get_logger()
 
@@ -28,6 +30,78 @@ class Executor:
     def __init__(self, config: Config, inventory_manager: InventoryManager):
         self.config = config
         self.inventory_manager = inventory_manager
+        ansible_logger._setup_from_config(config)
+
+    def _build_summary_result(
+        self,
+        task_id: str,
+        results: Dict[str, Dict[str, Any]],
+        elapsed: float,
+        task_type: str = "execution",
+    ) -> Dict[str, Any]:
+        """构建摘要返回结果
+
+        Args:
+            task_id: 任务 ID
+            results: 所有主机的执行结果
+            elapsed: 执行耗时
+            task_type: 任务类型
+
+        Returns:
+            摘要结果字典
+        """
+        task_result_store.save_result(task_id, {"results": results, "elapsed": elapsed})
+
+        total = len(results)
+        success_count = sum(1 for r in results.values() if r.get("rc", 0) == 0)
+        failed_count = total - success_count
+
+        failed_hosts = [h for h, r in results.items() if r.get("rc", 0) != 0]
+
+        max_failed_detail = self.config.max_failed_detail
+        failed_detail = {}
+        for host in failed_hosts[:max_failed_detail]:
+            host_result = results[host].copy()
+            max_len = self.config.max_output_length
+            if "stdout" in host_result and len(host_result["stdout"]) > max_len:
+                host_result["stdout"] = (
+                    host_result["stdout"][: max_len // 2]
+                    + "\n...[truncated]...\n"
+                    + host_result["stdout"][-max_len // 2 :]
+                )
+            if "stderr" in host_result and len(host_result["stderr"]) > max_len:
+                host_result["stderr"] = (
+                    host_result["stderr"][: max_len // 2]
+                    + "\n...[truncated]...\n"
+                    + host_result["stderr"][-max_len // 2 :]
+                )
+            failed_detail[host] = host_result
+
+        status = "success"
+        if failed_count > 0:
+            if success_count > 0:
+                status = "partial_success"
+            else:
+                status = "failed"
+
+        message = f"执行完成，{failed_count} 台主机失败"
+        if failed_count > 0:
+            message += f"。使用 get_task_detail('{task_id}', host) 查看详情"
+
+        return {
+            "task_id": task_id,
+            "status": status,
+            "summary": {
+                "total": total,
+                "success": success_count,
+                "failed": failed_count,
+            },
+            "failed_hosts": failed_hosts,
+            "failed_detail": failed_detail,
+            "has_more_failed": len(failed_hosts) > max_failed_detail,
+            "elapsed": f"{elapsed:.2f}s",
+            "message": message,
+        }
 
     def _build_inventory(
         self,
@@ -36,29 +110,31 @@ class Executor:
         use_cached: bool = False,
     ) -> Dict[str, Any]:
         """构建 Ansible inventory
-        
+
         Args:
             targets: 目标主机列表
             credentials: LLM 提供的凭据信息
             use_cached: 是否强制使用缓存的 inventory（用于 fallback）
-        
+
         Returns:
             Ansible inventory 字典
         """
-        inventory = {"all": {"hosts": {}}}
+        inventory: Dict[str, Any] = {"all": {"hosts": {}}}
         for target in targets:
             host_data: Dict[str, Any] = {
                 "ansible_host": target,
                 "ansible_ssh_common_args": "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no",
             }
-            
+
             cached_host = self.inventory_manager.get_host(target)
-            
+
             if use_cached and cached_host:
                 host_data.update(cached_host)
                 logger.info(f"使用缓存的 inventory 信息: {target}")
                 if "ansible_python_interpreter" in cached_host:
-                    logger.info(f"使用缓存的 Python 解释器: {cached_host['ansible_python_interpreter']}")
+                    logger.info(
+                        f"使用缓存的 Python 解释器: {cached_host['ansible_python_interpreter']}"
+                    )
             elif credentials:
                 if "user" in credentials:
                     host_data["ansible_user"] = credentials["user"]
@@ -77,7 +153,7 @@ class Executor:
             elif cached_host:
                 host_data.update(cached_host)
                 logger.debug(f"使用缓存的 inventory 信息（无新凭据）: {target}")
-            
+
             inventory["all"]["hosts"][target] = host_data
         return inventory
 
@@ -89,6 +165,18 @@ class Executor:
         extravars: Optional[Dict[str, Any]] = None,
     ) -> Any:
         timeout = min(timeout or self.config.default_timeout, self.config.max_timeout)
+        task_id = str(uuid.uuid4())
+
+        ansible_logger.log_execution_start(
+            task_id=task_id,
+            playbook=playbook,
+            inventory=inventory,
+            timeout=timeout,
+            extravars=extravars,
+        )
+
+        start_time = time.time()
+
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
             playbook_path = tmpdir_path / "playbook.yml"
@@ -97,13 +185,71 @@ class Executor:
             inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
             logger.debug(f"执行 playbook: {playbook_path}")
             logger.debug(f"Inventory: {inventory_path}")
-            return ansible_runner.run(
+            result = ansible_runner.run(
                 playbook=str(playbook_path),
                 inventory=str(inventory_path),
                 quiet=True,
                 timeout=timeout,
                 extravars=extravars,
             )
+
+        elapsed = time.time() - start_time
+
+        for event in result.events:
+            event_type = event.get("event", "")
+            event_data = event.get("event_data", {})
+
+            if event_type in [
+                "runner_on_ok",
+                "runner_on_failed",
+                "runner_on_unreachable",
+            ]:
+                host = event_data.get("host", "")
+                task_name = event_data.get("task", "")
+                res = event_data.get("res", {})
+
+                ansible_logger.log_execution_event(
+                    task_id=task_id,
+                    event_type=event_type,
+                    host=host,
+                    task_name=task_name,
+                    result=res,
+                )
+
+        total_hosts = len(inventory.get("all", {}).get("hosts", {}))
+        success_count = 0
+        failed_count = 0
+        unreachable_count = 0
+
+        for event in result.events:
+            event_type = event.get("event", "")
+            if event_type == "runner_on_ok":
+                success_count += 1
+            elif event_type == "runner_on_failed":
+                failed_count += 1
+            elif event_type == "runner_on_unreachable":
+                unreachable_count += 1
+
+        status = "success"
+        if failed_count > 0 or unreachable_count > 0:
+            if success_count > 0:
+                status = "partial_success"
+            else:
+                status = "failed"
+
+        ansible_logger.log_execution_result(
+            task_id=task_id,
+            status=status,
+            summary={
+                "total": total_hosts,
+                "success": success_count,
+                "failed": failed_count,
+                "unreachable": unreachable_count,
+            },
+            elapsed=elapsed,
+        )
+
+        return result
 
     def _parse_wrapper_output(self, output: str) -> Dict[str, Any]:
         result = {"stdout": "", "stderr": "", "rc": -1, "elapsed": "0s"}
@@ -125,17 +271,17 @@ class Executor:
         timeout: Optional[int] = None,
     ) -> Dict[str, bool]:
         """测试主机连接性
-        
+
         Args:
             targets: 目标主机列表
             inventory: Ansible inventory
             timeout: 超时时间
-        
+
         Returns:
             字典，键为主机名，值为是否可连接
         """
         logger.info(f"测试主机连接性: {targets}")
-        
+
         playbook = [
             {
                 "name": "Test connectivity",
@@ -151,13 +297,13 @@ class Executor:
                 ],
             }
         ]
-        
+
         result = self._run_ansible(playbook, inventory, timeout)
-        
+
         connectivity = {}
         for host in targets:
             connectivity[host] = False
-        
+
         for event in result.events:
             event_type = event.get("event", "")
             if event_type == "runner_on_ok":
@@ -170,7 +316,7 @@ class Executor:
                 if host in connectivity:
                     connectivity[host] = False
                     logger.warning(f"主机 {host} 连接测试失败")
-        
+
         return connectivity
 
     def _parse_result(self, result: Any, hosts: List[str]) -> Dict[str, Dict[str, Any]]:
@@ -216,31 +362,40 @@ class Executor:
         targets: List[str],
         credentials: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         logger.info(f"检查主机状态: {targets}")
-        logger.debug(f"凭据信息: user={credentials.get('user') if credentials else None}, port={credentials.get('port') if credentials else None}")
-        
+        logger.debug(
+            f"凭据信息: user={credentials.get('user') if credentials else None}, port={credentials.get('port') if credentials else None}"
+        )
+
         install_path = self.config.tsc_tools_install_path
-        
+
         if credentials:
             logger.info("使用 LLM 提供的凭据测试连接...")
             inventory = self._build_inventory(targets, credentials, use_cached=False)
             test_result = self._test_connectivity(targets, inventory, timeout)
-            
-            failed_hosts = [host for host, success in test_result.items() if not success]
+
+            failed_hosts = [
+                host for host, success in test_result.items() if not success
+            ]
             success_hosts = [host for host, success in test_result.items() if success]
-            
+
             if failed_hosts:
                 logger.warning(f"LLM 凭据连接失败的主机: {failed_hosts}")
-                cached_inventory = self._build_inventory(targets, credentials=None, use_cached=True)
-                cached_test_result = self._test_connectivity(targets, cached_inventory, timeout)
-                
+                cached_inventory = self._build_inventory(
+                    targets, credentials=None, use_cached=True
+                )
+                cached_test_result = self._test_connectivity(
+                    targets, cached_inventory, timeout
+                )
+
                 for host in failed_hosts:
                     if cached_test_result.get(host, False):
                         logger.info(f"主机 {host} 使用缓存凭据连接成功，将使用缓存信息")
                     else:
                         logger.warning(f"主机 {host} 缓存凭据也连接失败")
-            
+
             for host in success_hosts:
                 self.inventory_manager.update_host_credentials(
                     host=host,
@@ -250,10 +405,10 @@ class Executor:
                     private_key=credentials.get("private_key"),
                 )
                 logger.info(f"主机 {host} 验证成功，已更新 inventory")
-        
+
         inventory = self._build_inventory(targets, credentials=None, use_cached=True)
         logger.debug(f"最终使用的 inventory: {inventory}")
-        
+
         playbook = [
             {
                 "name": "Check host status",
@@ -328,7 +483,9 @@ class Executor:
                         results[host]["arch"] = self.config.normalize_architecture(
                             arch_raw
                         )
-                        logger.info(f"主机 {host} 架构: raw={arch_raw}, normalized={results[host]['arch']}")
+                        logger.info(
+                            f"主机 {host} 架构: raw={arch_raw}, normalized={results[host]['arch']}"
+                        )
                     elif "Detect distribution" in task:
                         distro_raw = res.get("stdout", "").strip()
                         results[host]["distro_raw"] = distro_raw
@@ -349,26 +506,40 @@ class Executor:
                         )
                         if results[host]["python_installed"]:
                             results[host]["python_path"] = python_path
-                            tsc_python_path = f"{install_path}/micromamba/envs/tsc_python/bin/python3"
-                            results[host]["tsc_python_installed"] = (python_path == tsc_python_path)
+                            tsc_python_path = (
+                                f"{install_path}/micromamba/envs/tsc_python/bin/python3"
+                            )
+                            results[host]["tsc_python_installed"] = (
+                                python_path == tsc_python_path
+                            )
                             self.inventory_manager.update_python_interpreter(
                                 host, python_path
                             )
                             logger.info(f"主机 {host} Python 路径: {python_path}")
-                            logger.info(f"主机 {host} tsc_python: {'已安装' if results[host]['tsc_python_installed'] else '未安装'}")
+                            logger.info(
+                                f"主机 {host} tsc_python: {'已安装' if results[host]['tsc_python_installed'] else '未安装'}"
+                            )
                         else:
                             logger.info(f"主机 {host} Python 未安装")
                     elif "Get Python version" in task:
                         version = res.get("stdout", "").strip()
                         results[host]["python_version"] = (
-                            version if version and "not_installed" not in version else ""
+                            version
+                            if version and "not_installed" not in version
+                            else ""
                         )
                         if results[host]["python_version"]:
-                            logger.info(f"主机 {host} Python 版本: {results[host]['python_version']}")
+                            logger.info(
+                                f"主机 {host} Python 版本: {results[host]['python_version']}"
+                            )
                     elif "Check tsc_tools" in task:
                         tsc_tools_output = res.get("stdout", "").strip()
-                        results[host]["tsc_tools_installed"] = tsc_tools_output == "installed"
-                        logger.info(f"主机 {host} tsc_tools: {'已安装' if results[host]['tsc_tools_installed'] else '未安装'}")
+                        results[host]["tsc_tools_installed"] = (
+                            tsc_tools_output == "installed"
+                        )
+                        logger.info(
+                            f"主机 {host} tsc_tools: {'已安装' if results[host]['tsc_tools_installed'] else '未安装'}"
+                        )
             elif event_type in ["runner_on_failed", "runner_on_unreachable"]:
                 event_data = event.get("event_data", {})
                 host = event_data.get("host", "")
@@ -388,7 +559,24 @@ class Executor:
                 f"python_installed={host_result.get('python_installed')}, "
                 f"tsc_tools_installed={host_result.get('tsc_tools_installed')}"
             )
-        return {"task_id": str(uuid.uuid4()), "results": results}
+
+        final_task_id = task_id or str(uuid.uuid4())
+        task_result_store.save_result(final_task_id, {"results": results, "elapsed": 0})
+
+        total = len(results)
+        error_count = sum(1 for r in results.values() if r.get("error"))
+        success_count = total - error_count
+
+        return {
+            "task_id": final_task_id,
+            "status": "success" if error_count == 0 else "partial_success",
+            "summary": {
+                "total": total,
+                "success": success_count,
+                "error": error_count,
+            },
+            "results": results,
+        }
 
     def install_python(
         self,
@@ -397,6 +585,7 @@ class Executor:
         version: Optional[str] = None,
         date: Optional[str] = None,
         timeout: Optional[int] = None,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         logger.info(f"安装 Python: {targets}")
         detect_result = self.check_host_status(targets, credentials, timeout)
@@ -422,7 +611,8 @@ class Executor:
                 logger.info(f"主机 {host} tsc_python 已安装，跳过")
         hosts_need_install = [h for h in targets if h not in results]
         if not hosts_need_install:
-            return {"task_id": str(uuid.uuid4()), "results": results}
+            final_task_id = task_id or str(uuid.uuid4())
+            return {"task_id": final_task_id, "results": results}
         inventory = self._build_inventory(hosts_need_install, credentials)
         install_tasks = []
         for host in hosts_need_install:
@@ -436,7 +626,9 @@ class Executor:
                     "message": f"无法获取主机架构或发行版信息: arch={arch}, distro={distro}",
                     "error": "environment_detection_failed",
                 }
-                logger.error(f"主机 {host} 无法获取环境信息: arch={arch}, distro={distro}")
+                logger.error(
+                    f"主机 {host} 无法获取环境信息: arch={arch}, distro={distro}"
+                )
                 continue
             install_url = self.config.get_python_install_url(
                 distro, arch, version, date
@@ -447,7 +639,7 @@ class Executor:
             install_tasks.append(
                 {
                     "name": f"Install Python on {host}",
-                    "ansible.builtin.raw": f"mkdir -p /tmp/tsc_python && curl -sSL {install_url} -o /tmp/tsc_python/install.sh && chmod +x /tmp/tsc_python/install.sh && /tmp/tsc_python/install.sh 2>&1; rm -rf /tmp/tsc_python",
+                    "ansible.builtin.raw": f"mkdir -p /tmp/tsc_python && curl -sSL {install_url} -o /tmp/tsc_python/install.sh && chmod +x /tmp/tsc_python/install.sh && /tmp/tsc_python/install.sh >/dev/null; rm -rf /tmp/tsc_python",
                     "when": f"inventory_hostname == '{host}'",
                     "register": f"install_result_{host.replace('.', '_')}",
                     "failed_when": False,
@@ -535,7 +727,26 @@ class Executor:
                             host_result["message"] = res.get("msg", "安装失败")
                             host_result["install_output"] = res.get("msg", "")
             results[host] = host_result
-        return {"task_id": str(uuid.uuid4()), "results": results}
+
+        final_task_id = task_id or str(uuid.uuid4())
+        task_result_store.save_result(final_task_id, {"results": results, "elapsed": 0})
+
+        total = len(results)
+        installed_count = sum(1 for r in results.values() if r.get("installed"))
+        skipped_count = sum(1 for r in results.values() if r.get("skipped"))
+        failed_count = total - installed_count - skipped_count
+
+        return {
+            "task_id": final_task_id,
+            "status": "success" if failed_count == 0 else "partial_success",
+            "summary": {
+                "total": total,
+                "installed": installed_count,
+                "skipped": skipped_count,
+                "failed": failed_count,
+            },
+            "results": results,
+        }
 
     def install_tsc_tools(
         self,
@@ -544,6 +755,7 @@ class Executor:
         version: Optional[str] = None,
         date: Optional[str] = None,
         timeout: Optional[int] = None,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         logger.info(f"安装 tsc_tools: {targets}")
         detect_result = self.check_host_status(targets, credentials, timeout)
@@ -562,7 +774,8 @@ class Executor:
             else:
                 hosts_need_check.append(host)
         if not hosts_need_check:
-            return {"task_id": str(uuid.uuid4()), "results": pre_check_results}
+            final_task_id = task_id or str(uuid.uuid4())
+            return {"task_id": final_task_id, "results": pre_check_results}
         install_path = self.config.tsc_tools_install_path
         inventory = self._build_inventory(hosts_need_check, credentials)
         playbook = [
@@ -615,7 +828,8 @@ class Executor:
             if not results[host]["skipped"]:
                 hosts_need_install.append(host)
         if not hosts_need_install:
-            return {"task_id": str(uuid.uuid4()), "results": results}
+            final_task_id = task_id or str(uuid.uuid4())
+            return {"task_id": final_task_id, "results": results}
         install_url = self.config.get_tsc_tools_install_url(version, date)
         logger.info(f"安装 tsc_tools, url={install_url}")
         install_playbook = [
@@ -627,7 +841,7 @@ class Executor:
                 "tasks": [
                     {
                         "name": "Download and install tsc_tools",
-                        "ansible.builtin.raw": f"mkdir -p /tmp/tsc_tools && curl -sSL {install_url} -o /tmp/tsc_tools/install.sh && chmod +x /tmp/tsc_tools/install.sh && /tmp/tsc_tools/install.sh 2>&1; rm -rf /tmp/tsc_tools",
+                        "ansible.builtin.raw": f"mkdir -p /tmp/tsc_tools && curl -sSL {install_url} -o /tmp/tsc_tools/install.sh && chmod +x /tmp/tsc_tools/install.sh && /tmp/tsc_tools/install.sh >/dev/null; rm -rf /tmp/tsc_tools",
                         "register": "install_result",
                         "failed_when": False,
                     },
@@ -703,7 +917,26 @@ class Executor:
                             host_result["message"] = res.get("msg", "安装失败")
                             host_result["install_output"] = res.get("msg", "")
             results[host] = host_result
-        return {"task_id": str(uuid.uuid4()), "results": results}
+
+        final_task_id = task_id or str(uuid.uuid4())
+        task_result_store.save_result(final_task_id, {"results": results, "elapsed": 0})
+
+        total = len(results)
+        installed_count = sum(1 for r in results.values() if r.get("installed"))
+        skipped_count = sum(1 for r in results.values() if r.get("skipped"))
+        failed_count = total - installed_count - skipped_count
+
+        return {
+            "task_id": final_task_id,
+            "status": "success" if failed_count == 0 else "partial_success",
+            "summary": {
+                "total": total,
+                "installed": installed_count,
+                "skipped": skipped_count,
+                "failed": failed_count,
+            },
+            "results": results,
+        }
 
     def dispatch_file(
         self,
@@ -712,13 +945,14 @@ class Executor:
         dest: str,
         credentials: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         logger.info(f"分发文件: {targets}, src={src}, dest={dest}")
         src_path = Path(src)
         if not src_path.exists():
             logger.error(f"本地文件不存在: {src}")
             return {
-                "task_id": str(uuid.uuid4()),
+                "task_id": task_id or str(uuid.uuid4()),
                 "status": "failed",
                 "results": {
                     host: {
@@ -733,18 +967,14 @@ class Executor:
             }
         detect_result = self.check_host_status(targets, credentials, timeout)
         unreachable_hosts = [
-            h for h, info in detect_result["results"].items()
-            if info.get("error")
+            h for h, info in detect_result["results"].items() if info.get("error")
         ]
         if unreachable_hosts:
             logger.warning(f"以下主机不可达: {unreachable_hosts}")
-        reachable_hosts = [
-            h for h in targets
-            if h not in unreachable_hosts
-        ]
+        reachable_hosts = [h for h in targets if h not in unreachable_hosts]
         if not reachable_hosts:
             return {
-                "task_id": str(uuid.uuid4()),
+                "task_id": task_id or str(uuid.uuid4()),
                 "status": "failed",
                 "summary": {
                     "total": len(targets),
@@ -779,7 +1009,7 @@ class Executor:
                     failed_hosts.append(host)
             if failed_hosts:
                 return {
-                    "task_id": str(uuid.uuid4()),
+                    "task_id": task_id or str(uuid.uuid4()),
                     "status": "failed",
                     "summary": {
                         "total": len(targets),
@@ -833,7 +1063,7 @@ class Executor:
         start_time = time.time()
         result = self._run_ansible(playbook, inventory, timeout)
         elapsed = time.time() - start_time
-        results = {}
+        results: Dict[str, Dict[str, Any]] = {}
         for host in targets:
             results[host] = {
                 "rc": -1,
@@ -871,24 +1101,11 @@ class Executor:
                         if "unreachable" in event.get("event", "")
                         else "transfer_error"
                     )
-        success_count = sum(1 for r in results.values() if r.get("transferred"))
-        failed_count = len(results) - success_count
-        status = (
-            "success"
-            if failed_count == 0
-            else ("partial_success" if success_count > 0 else "failed")
+
+        final_task_id = task_id or str(uuid.uuid4())
+        return self._build_summary_result(
+            final_task_id, results, elapsed, "dispatch_file"
         )
-        return {
-            "task_id": str(uuid.uuid4()),
-            "status": status,
-            "summary": {
-                "total": len(targets),
-                "success": success_count,
-                "failed": failed_count,
-            },
-            "results": results,
-            "elapsed": f"{elapsed:.2f}s",
-        }
 
     def ansible_shell(
         self,
@@ -896,12 +1113,13 @@ class Executor:
         command: str,
         credentials: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         logger.info(f"执行命令: {targets} - {command}")
         if self.config.is_high_risk_command(command):
             logger.warning(f"高危命令被拦截, 日志已记录, 请联系管理员: {command}")
             return {
-                "task_id": str(uuid.uuid4()),
+                "task_id": task_id or str(uuid.uuid4()),
                 "status": "failed",
                 "results": {
                     host: {
@@ -916,15 +1134,11 @@ class Executor:
             }
         detect_result = self.check_host_status(targets, credentials, timeout)
         unreachable_hosts = [
-            h for h, info in detect_result["results"].items()
-            if info.get("error")
+            h for h, info in detect_result["results"].items() if info.get("error")
         ]
         if unreachable_hosts:
             logger.warning(f"以下主机不可达: {unreachable_hosts}")
-        reachable_hosts = [
-            h for h in targets
-            if h not in unreachable_hosts
-        ]
+        reachable_hosts = [h for h in targets if h not in unreachable_hosts]
         if not reachable_hosts:
             return {
                 "task_id": str(uuid.uuid4()),
@@ -962,7 +1176,7 @@ class Executor:
                     failed_hosts.append(host)
             if failed_hosts:
                 return {
-                    "task_id": str(uuid.uuid4()),
+                    "task_id": task_id or str(uuid.uuid4()),
                     "status": "failed",
                     "summary": {
                         "total": len(targets),
@@ -1013,27 +1227,14 @@ echo "ELAPSED_TIME:$elapsed"
         result = self._run_ansible(playbook, inventory, timeout)
         elapsed = time.time() - start_time
         results = self._parse_result(result, targets)
-        success_count = sum(1 for r in results.values() if r.get("rc") == 0)
-        failed_count = len(results) - success_count
-        status = (
-            "success"
-            if failed_count == 0
-            else ("partial_success" if success_count > 0 else "failed")
+
+        final_task_id = task_id or str(uuid.uuid4())
+        return self._build_summary_result(
+            final_task_id, results, elapsed, "ansible_shell"
         )
-        return {
-            "task_id": str(uuid.uuid4()),
-            "status": status,
-            "summary": {
-                "total": len(targets),
-                "success": success_count,
-                "failed": failed_count,
-            },
-            "results": results,
-            "elapsed": f"{elapsed:.2f}s",
-        }
 
     def _parse_playbook_metadata(self, playbook_path: Path) -> Dict[str, Any]:
-        metadata = {
+        metadata: Dict[str, Any] = {
             "name": playbook_path.name,
             "path": str(playbook_path),
             "description": "",
@@ -1044,26 +1245,26 @@ echo "ELAPSED_TIME:$elapsed"
         }
         try:
             content = playbook_path.read_text(encoding="utf-8")
-            
+
             json_metadata = self._extract_json_metadata(content)
             if json_metadata:
                 metadata.update(json_metadata)
                 return metadata
-            
+
             in_description = False
             description_lines = []
-            
+
             for line in content.split("\n"):
                 stripped = line.strip()
-                
+
                 if stripped.startswith("---"):
                     break
-                
+
                 if not stripped.startswith("#"):
                     continue
-                
+
                 comment = stripped[1:].strip()
-                
+
                 if comment.startswith("@description:"):
                     metadata["description"] = comment.split(":", 1)[1].strip()
                 elif comment.startswith("Description:"):
@@ -1072,30 +1273,45 @@ echo "ELAPSED_TIME:$elapsed"
                     if desc_content:
                         description_lines.append(desc_content)
                 elif in_description:
-                    if comment and not comment.startswith(("Author:", "Version:", "Tags:", "Parameters:", "Use Cases:", "Example:", "Notes:", "Playbook:")):
+                    if comment and not comment.startswith(
+                        (
+                            "Author:",
+                            "Version:",
+                            "Tags:",
+                            "Parameters:",
+                            "Use Cases:",
+                            "Example:",
+                            "Notes:",
+                            "Playbook:",
+                        )
+                    ):
                         description_lines.append(comment)
                     else:
                         in_description = False
                         if description_lines:
                             metadata["description"] = " ".join(description_lines)
-                
+
                 if comment.startswith("@author:"):
                     metadata["author"] = comment.split(":", 1)[1].strip()
                 elif comment.startswith("Author:"):
                     metadata["author"] = comment.split(":", 1)[1].strip()
-                
+
                 if comment.startswith("@version:"):
                     metadata["version"] = comment.split(":", 1)[1].strip()
                 elif comment.startswith("Version:"):
                     metadata["version"] = comment.split(":", 1)[1].strip()
-                
+
                 if comment.startswith("@tags:"):
                     tags_str = comment.split(":", 1)[1].strip()
-                    metadata["tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
+                    metadata["tags"] = [
+                        t.strip() for t in tags_str.split(",") if t.strip()
+                    ]
                 elif comment.startswith("Tags:"):
                     tags_str = comment.split(":", 1)[1].strip()
-                    metadata["tags"] = [t.strip() for t in tags_str.split(",") if t.strip()]
-                
+                    metadata["tags"] = [
+                        t.strip() for t in tags_str.split(",") if t.strip()
+                    ]
+
                 if comment.startswith("@parameters:"):
                     pass
                 elif comment.startswith("Parameters:"):
@@ -1103,27 +1319,42 @@ echo "ELAPSED_TIME:$elapsed"
                 else:
                     param_line = comment.lstrip("-").strip()
                     if param_line and "(" in param_line and ":" in param_line:
-                        param_match = re.match(r'(\w+)\s*\((\w+)\):\s*(.+)', param_line)
+                        param_match = re.match(r"(\w+)\s*\((\w+)\):\s*(.+)", param_line)
                         if param_match:
-                            metadata["parameters"].append({
-                                "name": param_match.group(1),
-                                "type": param_match.group(2),
-                                "description": param_match.group(3),
-                            })
+                            metadata["parameters"].append(
+                                {
+                                    "name": param_match.group(1),
+                                    "type": param_match.group(2),
+                                    "description": param_match.group(3),
+                                }
+                            )
                     elif param_line and ":" in param_line:
                         parts = param_line.split(":", 1)
                         if len(parts) == 2:
                             param_name = parts[0].strip()
                             param_desc = parts[1].strip()
-                            if param_name and not param_name.startswith(("Use", "Example", "Notes", "Playbook", "Description", "Author", "Version", "Tags")):
-                                metadata["parameters"].append({
-                                    "name": param_name,
-                                    "description": param_desc,
-                                })
-            
+                            if param_name and not param_name.startswith(
+                                (
+                                    "Use",
+                                    "Example",
+                                    "Notes",
+                                    "Playbook",
+                                    "Description",
+                                    "Author",
+                                    "Version",
+                                    "Tags",
+                                )
+                            ):
+                                metadata["parameters"].append(
+                                    {
+                                        "name": param_name,
+                                        "description": param_desc,
+                                    }
+                                )
+
             if description_lines and not metadata["description"]:
                 metadata["description"] = " ".join(description_lines)
-                
+
         except Exception as e:
             logger.warning(f"解析 playbook 元数据失败: {playbook_path}, 错误: {e}")
         return metadata
@@ -1133,37 +1364,39 @@ echo "ELAPSED_TIME:$elapsed"
         try:
             json_lines = []
             in_meta = False
-            
+
             for line in content.split("\n"):
                 stripped = line.strip()
-                
+
                 if stripped.startswith("# @meta:"):
                     in_meta = True
                     json_start = stripped[8:].strip()
                     if json_start:
                         json_lines.append(json_start)
                     continue
-                
+
                 if in_meta:
                     if stripped.startswith("#"):
                         json_line = stripped[1:].strip()
                         json_lines.append(json_line)
                     elif stripped.startswith("---"):
                         break
-            
+
             if not json_lines:
                 return None
-            
+
             json_str = "\n".join(json_lines)
             metadata = json.loads(json_str)
-            
+
             if "parameters" in metadata:
                 for param in metadata["parameters"]:
                     if "default" in param:
-                        param["description"] = f"{param.get('description', '')} (default: {param['default']})"
-            
+                        param["description"] = (
+                            f"{param.get('description', '')} (default: {param['default']})"
+                        )
+
             return metadata
-            
+
         except json.JSONDecodeError as e:
             logger.debug(f"JSON 元数据解析失败: {e}")
             return None
@@ -1195,6 +1428,7 @@ echo "ELAPSED_TIME:$elapsed"
         credentials: Optional[Dict[str, Any]] = None,
         extravars: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         logger.info(f"执行 playbook: {playbook}, 目标: {targets}")
         playbooks_dir = self.config.playbooks_path
@@ -1206,7 +1440,7 @@ echo "ELAPSED_TIME:$elapsed"
         if not playbook_path.exists():
             logger.error(f"playbook 文件不存在: {playbook}")
             return {
-                "task_id": str(uuid.uuid4()),
+                "task_id": task_id or str(uuid.uuid4()),
                 "status": "failed",
                 "results": {
                     host: {
@@ -1272,7 +1506,7 @@ echo "ELAPSED_TIME:$elapsed"
                 extravars=extravars,
             )
         elapsed = time.time() - start_time
-        results = {}
+        results: Dict[str, Dict[str, Any]] = {}
         for host in targets:
             results[host] = {
                 "rc": -1,
@@ -1300,31 +1534,20 @@ echo "ELAPSED_TIME:$elapsed"
                 res = event_data.get("res", {})
                 if host in results:
                     results[host]["rc"] = res.get("rc", 2)
-                    results[host]["stderr"] = res.get("msg", res.get("stderr", "任务执行失败"))
+                    results[host]["stderr"] = res.get(
+                        "msg", res.get("stderr", "任务执行失败")
+                    )
         if stats:
             for host in targets:
                 host_stats = stats.get("processed", {})
                 if host in host_stats or host in stats.get("ok", {}):
                     if results[host]["rc"] == -1:
                         results[host]["rc"] = 0
-        success_count = sum(1 for r in results.values() if r.get("rc") == 0)
-        failed_count = len(results) - success_count
-        status = (
-            "success"
-            if failed_count == 0
-            else ("partial_success" if success_count > 0 else "failed")
+
+        final_task_id = task_id or str(uuid.uuid4())
+        return self._build_summary_result(
+            final_task_id, results, elapsed, "run_playbook"
         )
-        return {
-            "task_id": str(uuid.uuid4()),
-            "status": status,
-            "summary": {
-                "total": len(targets),
-                "success": success_count,
-                "failed": failed_count,
-            },
-            "results": results,
-            "elapsed": f"{elapsed:.2f}s",
-        }
 
     def ansible_fetch(
         self,
@@ -1334,24 +1557,21 @@ echo "ELAPSED_TIME:$elapsed"
         credentials: Optional[Dict[str, Any]] = None,
         flat: bool = False,
         timeout: Optional[int] = None,
+        task_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         logger.info(f"获取文件: {targets}, src={src}, dest={dest}")
         dest_path = Path(dest)
         dest_path.mkdir(parents=True, exist_ok=True)
         detect_result = self.check_host_status(targets, credentials, timeout)
         unreachable_hosts = [
-            h for h, info in detect_result["results"].items()
-            if info.get("error")
+            h for h, info in detect_result["results"].items() if info.get("error")
         ]
         if unreachable_hosts:
             logger.warning(f"以下主机不可达: {unreachable_hosts}")
-        reachable_hosts = [
-            h for h in targets
-            if h not in unreachable_hosts
-        ]
+        reachable_hosts = [h for h in targets if h not in unreachable_hosts]
         if not reachable_hosts:
             return {
-                "task_id": str(uuid.uuid4()),
+                "task_id": task_id or str(uuid.uuid4()),
                 "status": "failed",
                 "summary": {
                     "total": len(targets),
@@ -1388,7 +1608,7 @@ echo "ELAPSED_TIME:$elapsed"
                     failed_hosts.append(host)
             if failed_hosts:
                 return {
-                    "task_id": str(uuid.uuid4()),
+                    "task_id": task_id or str(uuid.uuid4()),
                     "status": "failed",
                     "summary": {
                         "total": len(targets),
@@ -1462,23 +1682,10 @@ echo "ELAPSED_TIME:$elapsed"
                         if "unreachable" in event.get("event", "")
                         else "fetch_error"
                     )
-        success_count = sum(1 for r in results.values() if r.get("rc") == 0)
-        failed_count = len(results) - success_count
-        status = (
-            "success"
-            if failed_count == 0
-            else ("partial_success" if success_count > 0 else "failed")
+
+        final_task_id = task_id or str(uuid.uuid4())
+        return self._build_summary_result(
+            final_task_id, results, elapsed, "ansible_fetch"
         )
-        return {
-            "task_id": str(uuid.uuid4()),
-            "status": status,
-            "summary": {
-                "total": len(targets),
-                "success": success_count,
-                "failed": failed_count,
-            },
-            "results": results,
-            "elapsed": f"{elapsed:.2f}s",
-        }
 
     ansible_copy = dispatch_file

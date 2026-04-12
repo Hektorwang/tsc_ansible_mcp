@@ -11,6 +11,7 @@
 采集 IaaS 层基础设施信息，包括处理器、内存、存储（RAID）、操作系统、包管理器等详细信息。
 
 **功能特性：**
+
 - ✅ 处理器信息（型号、核心数、架构）
 - ✅ 内存信息（容量、类型、使用率）
 - ✅ 存储信息（磁盘、RAID 配置）
@@ -40,9 +41,11 @@ ansible_playbook(
 ```
 
 **参数说明：**
+
 - `runtime` (bool): 是否采集当前硬件资源使用状态，默认 false
 
 **注意事项：**
+
 - 需要目标主机已安装 tsc_tools
 - 命令执行路径：`source /home/tsc/tsc_profile; tsc --tsc_iaas_info [--runtime]`
 
@@ -52,29 +55,29 @@ ansible_playbook(
 
 ### 必需字段
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
+| 字段          | 类型   | 说明              |
+| ------------- | ------ | ----------------- |
 | `description` | string | Playbook 功能描述 |
-| `author` | string | 作者 |
-| `version` | string | 版本号 |
-| `tags` | array | 标签列表 |
+| `author`      | string | 作者              |
+| `version`     | string | 版本号            |
+| `tags`        | array  | 标签列表          |
 
 ### 推荐字段
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `parameters` | array | 参数列表 |
-| `use_cases` | array | 使用场景 |
-| `example` | object | 调用示例 |
-| `notes` | array | 注意事项 |
+| 字段         | 类型   | 说明     |
+| ------------ | ------ | -------- |
+| `parameters` | array  | 参数列表 |
+| `use_cases`  | array  | 使用场景 |
+| `example`    | object | 调用示例 |
+| `notes`      | array  | 注意事项 |
 
 ### 参数对象字段
 
 ```json
 {
-  "name": "runtime",           // 参数名（必需）
-  "type": "bool",              // 类型：int, str, bool, list, dict
-  "default": false,            // 默认值
+  "name": "runtime", // 参数名（必需）
+  "type": "bool", // 类型：int, str, bool, list, dict
+  "default": false, // 默认值
   "description": "Collect runtime resource usage" // 描述（必需）
 }
 ```
@@ -83,24 +86,27 @@ ansible_playbook(
 
 ```json
 {
-  "playbook": "collect_iaas_info.yml",  // playbook 文件名
-  "targets": ["192.168.1.10"],          // 目标主机列表
-  "extravars": {                        // 额外变量（可选）
+  "playbook": "collect_iaas_info.yml", // playbook 文件名
+  "targets": ["192.168.1.10"], // 目标主机列表
+  "extravars": {
+    // 额外变量（可选）
     "runtime": true
   },
-  "user": "root",                       // SSH 用户
-  "password": "your_password"           // SSH 密码
+  "user": "root", // SSH 用户
+  "password": "your_password" // SSH 密码
 }
 ```
 
 ## 🎓 为什么选择 JSON 注释格式？
 
 ### 1. LLM 原生支持
+
 - JSON 是 LLM 最熟悉的数据格式
 - 不需要学习自定义格式
 - 解析准确率高
 
 ### 2. 完整的调用示例
+
 ```json
 "example": {
   "playbook": "collect_iaas_info.yml",
@@ -108,14 +114,17 @@ ansible_playbook(
   "extravars": {"runtime": true}
 }
 ```
+
 LLM 可以直接复制使用！
 
 ### 3. 丰富的类型信息
+
 - `type`: 明确参数类型
 - `default`: 显示默认值
 - `description`: 详细说明
 
 ### 4. 保持单文件
+
 - ✅ 元数据和代码在一起
 - ✅ 不需要额外的 .meta.json 文件
 - ✅ 通过 ansible-lint 验证
@@ -125,6 +134,7 @@ LLM 可以直接复制使用！
 ### 1. 提供完整的调用示例
 
 ❌ 不好：
+
 ```json
 "example": {
   "playbook": "collect_iaas_info.yml"
@@ -132,6 +142,7 @@ LLM 可以直接复制使用！
 ```
 
 ✅ 好：
+
 ```json
 "example": {
   "playbook": "collect_iaas_info.yml",
@@ -145,6 +156,7 @@ LLM 可以直接复制使用！
 ### 2. 明确参数类型
 
 ❌ 不好：
+
 ```json
 {
   "name": "runtime",
@@ -153,6 +165,7 @@ LLM 可以直接复制使用！
 ```
 
 ✅ 好：
+
 ```json
 {
   "name": "runtime",

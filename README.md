@@ -418,7 +418,8 @@ playbook_collect_iaas_info(
 
 **元数据要求**: playbook 必须包含 `description` 字段才能生成工具。
 
-**权限控制**: 
+**权限控制**:
+
 - `admin` 角色可以调用所有工具
 - `user` 角色只能调用 `playbook_*` 工具和 playbook 相关工具
 - 可在配置文件中自定义角色权限

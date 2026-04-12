@@ -493,6 +493,151 @@ JWT 认证中间件（提取角色信息）
 - 模块丰富：提供大量内置模块
 - 社区活跃：庞大的社区支持
 
+### 5.3 Ansible 执行日志架构
+
+#### 5.3.1 架构设计
+
+```
+Executor
+    ↓
+_run_ansible()
+    ↓
+AnsibleExecutionLogger
+    ↓
+logs/ansible_execution.log
+```
+
+#### 5.3.2 核心组件
+
+| 组件                     | 文件                      | 功能                       |
+| ------------------------ | ------------------------- | -------------------------- |
+| AnsibleExecutionLogger   | `lib/ansible_logger.py`   | Ansible 执行日志记录器     |
+| Executor 集成            | `lib/executor.py`         | 在执行过程中记录日志       |
+
+#### 5.3.3 日志记录流程
+
+```
+1. 执行开始
+   ├── 记录 Task ID
+   ├── 记录用户信息
+   ├── 记录超时时间
+   ├── 记录目标主机
+   ├── 记录 extravars
+   ├── 记录完整 playbook
+   └── 记录完整 inventory
+
+2. 执行过程
+   ├── 遍历所有事件
+   ├── 记录事件类型
+   ├── 记录主机名
+   ├── 记录任务名
+   ├── 记录执行结果
+   └── 记录详细信息
+
+3. 执行结束
+   ├── 计算执行状态
+   ├── 统计成功/失败主机数
+   ├── 记录执行耗时
+   └── 记录结果汇总
+```
+
+#### 5.3.4 日志文件配置
+
+```toml
+[logging]
+dir = "logs"
+level = "DEBUG"
+ansible_execution_log = "ansible_execution.log"
+ansible_execution_enabled = true
+ansible_execution_retention = "30 days"
+ansible_execution_rotation = "50 MB"
+```
+
+#### 5.3.5 日志格式示例
+
+```
+2026-04-11 10:00:00 | INFO | ========== ANSIBLE EXECUTION START ==========
+2026-04-11 10:00:00 | INFO | Task ID: xxx-xxx-xxx
+2026-04-11 10:00:00 | INFO | Timeout: 600s
+2026-04-11 10:00:00 | INFO | Targets: [host1, host2]
+2026-04-11 10:00:00 | INFO | Playbook:
+2026-04-11 10:00:00 | INFO |   ---
+2026-04-11 10:00:00 | INFO |   - name: Check host status
+2026-04-11 10:00:00 | INFO |     hosts: all
+2026-04-11 10:00:00 | INFO | =============================================
+2026-04-11 10:00:01 | INFO | [EVENT] Task: Check host status | Host: host1 | Status: OK
+2026-04-11 10:00:01 | DEBUG | [EVENT DETAIL] stdout: x86_64
+2026-04-11 10:00:01 | DEBUG | [EVENT DETAIL] rc: 0
+2026-04-11 10:00:05 | INFO | ========== ANSIBLE EXECUTION RESULT ==========
+2026-04-11 10:00:05 | INFO | Status: success
+2026-04-11 10:00:05 | INFO | Elapsed: 5.23s
+2026-04-11 10:00:05 | INFO | ==============================================
+```
+
+### 5.4 结果摘要模式架构
+
+#### 5.4.1 架构设计
+
+```
+Executor
+    ↓
+_build_summary_result()
+    ↓
+TaskResultStore
+    ↓
+logs/task_results/task_xxx.json
+    ↓
+MCP 查询工具 (get_task_detail, get_failed_hosts, get_all_results)
+```
+
+#### 5.4.2 存储架构
+
+```
+logs/
+├── tsc_ansible_mcp.log          # 应用日志
+├── ansible_execution.log        # Ansible 执行日志
+└── task_results/                # 任务结果存储目录
+    ├── task_xxx.json            # 任务详细结果
+    └── ...
+```
+
+#### 5.4.3 数据流
+
+```
+1. 执行请求
+   ├── Executor 执行 ansible 任务
+   ├── 收集所有主机结果
+   └── 调用 _build_summary_result()
+
+2. 构建摘要
+   ├── 保存完整结果到 JSON 文件
+   ├── 计算摘要统计
+   ├── 提取失败主机信息
+   └── 返回摘要结果
+
+3. 查询详情
+   ├── MCP 工具接收查询请求
+   ├── TaskResultStore 读取 JSON 文件
+   └── 返回详细信息
+```
+
+#### 5.4.4 核心组件
+
+| 组件                  | 文件                       | 功能               |
+| --------------------- | -------------------------- | ------------------ |
+| TaskResultStore       | `lib/task_result_store.py` | 任务结果存储管理器 |
+| _build_summary_result | `lib/executor.py`          | 构建摘要返回       |
+| MCP 查询工具          | `lib/server.py`            | 提供查询接口       |
+
+#### 5.4.5 配置选项
+
+```toml
+[execution]
+max_failed_detail = 10
+max_output_length = 1000
+result_store_dir = "logs/task_results"
+```
+
 ## 6. 系统边界
 
 ### 6.1 系统职责

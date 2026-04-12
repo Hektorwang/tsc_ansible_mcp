@@ -40,7 +40,7 @@
 
 按如下优先级, 失败后 fallback 到下一项:
 
-- 支持 `~/.ssh/config` 默认行为
+- 支持 `~/.ssh/config`\*\*\*\* 默认行为
 - SSH 密钥认证(操作系统默认)
 - 支持密码认证
 
@@ -61,7 +61,7 @@
 
 ```json
 {
-  "header": {"alg": "HS256", "typ": "JWT"},
+  "header": { "alg": "HS256", "typ": "JWT" },
   "payload": {
     "sub": "user_001",
     "name": "张三",
@@ -72,6 +72,7 @@
 ```
 
 **Payload 字段说明**:
+
 - `sub`: 用户唯一标识
 - `name`: 用户名称
 - `role`: 用户角色（admin, user）
@@ -79,17 +80,19 @@
 
 #### 2.7.3 角色权限控制
 
-| 角色    | 权限范围                                        |
-| ------- | ----------------------------------------------- |
-| admin   | 可调用所有工具                                  |
-| user    | 仅能调用 playbook 相关工具（list_playbooks, ansible_playbook, get_task_status, 以及所有动态生成的playbook工具） |
+| 角色  | 权限范围                                                                                                        |
+| ----- | --------------------------------------------------------------------------------------------------------------- |
+| admin | 可调用所有工具                                                                                                  |
+| user  | 仅能调用 playbook 相关工具（list_playbooks, ansible_playbook, get_task_status, 以及所有动态生成的playbook工具） |
 
 **权限控制的好处**:
+
 - 减少 LLM 幻觉导致的误操作
 - playbook 经过审查和测试，操作可控
 - 避免执行未经验证的命令
 
 **权限验证机制**:
+
 - MCP 工具列表根据角色过滤（新增）
 - MCP 工具调用时验证用户权限
 - LLM 获取工具列表时，根据角色暴露可用工具
@@ -97,8 +100,9 @@
 - 日志中记录每个操作的用户名
 
 **MCP 工具角色过滤**（v1.6.0 新增）:
+
 - admin 角色：可以看到所有 MCP 工具
-- user 角色：只能看到 playbook 相关工具（list_playbooks, ansible_playbook, get_task_status, playbook_*）
+- user 角色：只能看到 playbook 相关工具（list*playbooks, ansible_playbook, get_task_status, playbook*\*）
 - 工具列表在 MCP 协议层面进行过滤
 - 工具调用时进行二次权限检查，确保安全
 
@@ -120,6 +124,7 @@
 #### 2.7.6 JWT 生成器
 
 提供 `bin/generate_jwt.py` 工具：
+
 - 生成新密钥：`--generate-key`
 - 签发 JWT：`--issue --sub user_001 --name "张三" --role admin`
 - 签发带过期时间的 JWT：`--issue --sub user_001 --name "张三" --role admin --expires 24h`
@@ -127,6 +132,7 @@
 - 验证 JWT：`--verify <token>`
 
 **撤销 JWT/密钥**：
+
 - 撤销 JWT：直接编辑 `etc/jwt_issued_tokens.json`，删除对应记录，重启服务
 - 更换密钥：直接编辑 `etc/jwt_secret_key.txt`，重启服务（会使所有已签发的 JWT 失效）
 
@@ -234,7 +240,119 @@
 - 任务状态: SQLite(`logs/tsc_ansible_mcp.db`)
 - Inventory 缓存: YAML(`etc/inventory.yml`，Ansible 标准格式)
 
-## 7. 验证标准
+## 6. Ansible 执行日志
+
+### 6.1 功能描述
+
+系统应提供详细的 ansible 执行日志记录功能，将每次 ansible 执行的完整详细信息记录到独立的日志文件中。日志应包含完整的执行过程、每个任务的详细结果、错误信息等。
+
+### 6.2 功能需求
+
+1. **独立日志文件**
+   - 创建独立的 ansible 执行日志文件
+   - 日志文件路径：`logs/ansible_execution.log`
+   - 支持日志轮转和压缩
+   - 使用 loguru 的标准文本格式
+
+2. **日志内容（详细）**
+   - 执行时间戳
+   - 任务 ID
+   - 用户信息
+   - 执行的完整 playbook 内容（YAML 格式）
+   - 目标主机列表
+   - Inventory 内容（完整记录）
+   - 执行参数（timeout, extravars 等）
+   - **每个执行事件的详细信息**：
+     - 事件类型（runner_on_ok, runner_on_failed, runner_on_unreachable 等）
+     - 主机名
+     - 任务名
+     - 执行结果（stdout, stderr, rc）
+     - 是否改变状态（changed）
+   - 执行结果汇总（成功/失败主机数、总耗时等）
+   - 错误详情（如果有）
+
+3. **日志格式**
+   - 使用 loguru 的标准文本格式
+   - 结构化但可读性强
+   - 使用分隔线区分不同的执行记录
+   - 包含任务 ID，便于追踪
+
+4. **配置支持**
+   - 支持启用/禁用 ansible 执行日志
+   - 支持配置日志保留时间
+   - 支持配置日志轮转策略
+
+### 6.3 非功能需求
+
+1. **性能要求**
+   - 日志记录不应显著影响 ansible 执行性能
+   - 日志写入应异步进行（如果可能）
+
+2. **存储要求**
+   - 日志文件应支持轮转，避免占用过多磁盘空间
+   - 日志文件应支持压缩存储
+
+3. **可读性要求**
+   - 日志格式应清晰易读
+   - 使用分隔线区分不同的执行记录
+   - 重要信息使用不同的日志级别（INFO, WARNING, ERROR）
+
+## 7. 结果摘要模式
+
+### 7.1 功能描述
+
+当执行 playbook 或命令的目标主机数量较多时，返回结果可能超过 LLM 上下文长度限制。结果摘要模式通过默认返回摘要信息，将详细结果存储到文件，支持按需查询。
+
+### 7.2 核心特性
+
+1. **摘要返回**
+   - 默认只返回执行摘要（总数、成功数、失败数）
+   - 返回失败主机列表和详细信息（限制数量）
+   - 返回任务 ID，支持后续查询
+
+2. **混合存储**
+   - 摘要信息存储在 SQLite 数据库
+   - 详细结果存储在 JSON 文件（`logs/task_results/`）
+   - 永久保留，支持手动清理
+
+3. **查询工具**
+   - `get_task_detail(task_id, host)` - 查询特定主机详情
+   - `get_failed_hosts(task_id, limit, offset)` - 查询失败主机
+   - `get_all_results(task_id, limit, offset)` - 分页查询所有结果
+
+### 7.3 返回格式示例
+
+```json
+{
+  "task_id": "xxx-xxx-xxx",
+  "status": "partial_success",
+  "summary": {
+    "total": 100,
+    "success": 95,
+    "failed": 5
+  },
+  "failed_hosts": ["host1", "host2", "host3", "host4", "host5"],
+  "failed_detail": {
+    "host1": { "rc": 1, "stdout": "...", "stderr": "..." },
+    "host2": { "rc": 1, "stdout": "...", "stderr": "..." }
+  },
+  "has_more_failed": false,
+  "elapsed": "10.50s",
+  "message": "执行完成，5 台主机失败。使用 get_task_detail('xxx-xxx-xxx', host) 查看详情"
+}
+```
+
+### 7.4 适用工具
+
+- `ansible_shell` - Shell 命令执行
+- `ansible_playbook` - Playbook 执行
+- `ansible_copy` - 文件分发
+- `ansible_fetch` - 文件获取
+- `check_host_status` - 主机状态检查
+- `install_python` - Python 安装
+- `install_tsc_tools` - tsc_tools 安装
+
+## 8. 验证标准
 
 - 单台执行延迟(含探测)不超过 60 秒
 - 支持至少 100 台机器同时触发(分批执行)

@@ -1,5 +1,238 @@
 # Release Notes
 
+## Version=1.10.0
+
+2026-04-12
+
+### Bug 修复
+
+#### 1. Task ID 不一致问题修复
+
+修复了 `task_id` 在 server.py 和 executor.py 中不一致的问题，导致 `get_task_detail` 查询失败。
+
+**问题原因：**
+- `server.py` 创建了一个 `task_id`
+- `executor` 内部又创建了新的 `task_id`
+- `task_result_store.save_result` 保存的是 executor 内部的 task_id
+- 但返回给用户的是 server.py 的 task_id
+- 两个 task_id 不一致导致查询失败
+
+**修复内容：**
+
+修改了以下函数，添加 `task_id` 可选参数，确保整个调用链使用相同的 task_id：
+
+- `executor.py`:
+  - `check_host_status()` - 添加 task_id 参数
+  - `install_python()` - 添加 task_id 参数
+  - `install_tsc_tools()` - 添加 task_id 参数
+  - `dispatch_file()` - 添加 task_id 参数
+  - `ansible_fetch()` - 添加 task_id 参数
+  - `ansible_shell()` - 添加 task_id 参数
+  - `run_playbook()` - 添加 task_id 参数
+
+- `server.py`:
+  - 所有 MCP 工具调用传递 task_id 给 executor
+  - 所有 REST API 调用传递 task_id 给 executor
+  - 移除 `result["task_id"] = task_id` 覆盖操作
+
+#### 2. Extravars 参数类型修复
+
+修复了 CherryStudio 传递 extravars 为 JSON 字符串时验证失败的问题。
+
+**问题原因：**
+- CherryStudio 将 extravars 作为 JSON 字符串传递
+- Pydantic 验证期望字典类型，导致验证错误
+
+**修复内容：**
+- `extravars` 参数类型改为 `Optional[Union[Dict[str, Any], str]]`
+- 添加字符串解析逻辑，自动将 JSON 字符串转换为字典
+
+### 改进
+
+#### 1. Playbook 参数可选性优化
+
+- 移除元数据中的 `default` 字段
+- 添加 `required: false` 标识
+- 在描述中明确说明参数是可选的
+- 添加 notes 提示 LLM 不要传递默认值
+
+---
+
+## Version=1.9.0
+
+2026-04-11
+
+### 新功能
+
+#### 1. 结果摘要模式
+
+解决大规模主机执行时返回结果超过 LLM 上下文长度限制的问题。
+
+- **摘要返回** - 默认只返回执行摘要和失败主机详情（限制数量）
+- **混合存储** - 摘要存 SQLite，详情存 JSON 文件
+- **永久保留** - 详细结果永久保留，支持手动清理
+- **查询工具** - 提供三个查询工具获取详细信息
+
+#### 2. 新增 MCP 查询工具
+
+- `get_task_detail(task_id, host)` - 查询特定主机执行详情
+- `get_failed_hosts(task_id, limit, offset)` - 查询失败主机详情
+- `get_all_results(task_id, limit, offset)` - 分页查询所有结果
+
+#### 3. 返回格式变更
+
+所有执行类工具的返回格式统一为摘要格式：
+
+```json
+{
+  "task_id": "xxx-xxx-xxx",
+  "status": "partial_success",
+  "summary": {
+    "total": 100,
+    "success": 95,
+    "failed": 5
+  },
+  "failed_hosts": ["host1", "host2", ...],
+  "failed_detail": {
+    "host1": {"rc": 1, "stdout": "...", "stderr": "..."}
+  },
+  "has_more_failed": false,
+  "elapsed": "10.50s",
+  "message": "执行完成，5 台主机失败。使用 get_task_detail('xxx', host) 查看详情"
+}
+```
+
+#### 4. 适用工具
+
+以下工具已支持结果摘要模式：
+
+- `ansible_shell` - Shell 命令执行
+- `ansible_playbook` - Playbook 执行
+- `ansible_copy` - 文件分发
+- `ansible_fetch` - 文件获取
+- `check_host_status` - 主机状态检查
+- `install_python` - Python 安装
+- `install_tsc_tools` - tsc_tools 安装
+
+### 配置变更
+
+#### 执行配置
+
+在 `etc/tsc_ansible_mcp.toml` 中添加：
+
+```toml
+[execution]
+max_failed_detail = 10
+max_output_length = 1000
+result_store_dir = "logs/task_results"
+```
+
+### 文件变更
+
+#### 新增文件
+
+- `lib/task_result_store.py` - 任务结果存储模块
+
+#### 修改文件
+
+- `lib/executor.py` - 添加摘要返回格式
+- `lib/server.py` - 添加查询工具
+- `lib/config.py` - 添加配置属性
+- `etc/tsc_ansible_mcp.toml` - 添加配置项
+
+### 文档更新
+
+- 更新 `docs/PRD.md` - 添加结果摘要模式说明
+- 更新 `docs/SPEC.md` - 添加返回格式规格
+- 更新 `docs/ARCHITECTURE.md` - 添加存储架构说明
+
+---
+
+## Version=1.8.0
+
+2026-04-11
+
+### 新功能
+
+#### 1. Ansible 执行详细日志记录
+
+- **独立日志文件** - 创建独立的 ansible 执行日志文件 `logs/ansible_execution.log`
+- **详细记录** - 记录完整的 playbook、inventory、执行参数
+- **事件追踪** - 记录每个执行事件的详细信息（stdout, stderr, rc 等）
+- **结果汇总** - 记录执行结果汇总（成功/失败主机数、总耗时）
+- **配置灵活** - 支持启用/禁用、日志保留时间、轮转策略配置
+
+#### 2. 日志内容
+
+每次 ansible 执行都会记录以下详细信息：
+
+- 执行开始：Task ID、用户、超时、目标主机、playbook 内容、inventory 内容
+- 执行事件：事件类型、主机名、任务名、执行结果（stdout, stderr, rc, changed）
+- 执行结果：状态、成功/失败主机数、耗时
+
+#### 3. 日志格式
+
+使用 loguru 标准文本格式，清晰易读：
+
+```
+2026-04-11 10:00:00 | INFO | ========== ANSIBLE EXECUTION START ==========
+2026-04-11 10:00:00 | INFO | Task ID: xxx-xxx-xxx
+2026-04-11 10:00:00 | INFO | Timeout: 600s
+2026-04-11 10:00:00 | INFO | Targets: [host1, host2]
+2026-04-11 10:00:00 | INFO | Playbook:
+2026-04-11 10:00:00 | INFO |   ---
+2026-04-11 10:00:00 | INFO |   - name: Check host status
+...
+2026-04-11 10:00:01 | INFO | [EVENT] Task: Check host status | Host: host1 | Status: OK
+2026-04-11 10:00:01 | DEBUG | [EVENT DETAIL] stdout: x86_64
+2026-04-11 10:00:01 | DEBUG | [EVENT DETAIL] rc: 0
+...
+2026-04-11 10:00:05 | INFO | ========== ANSIBLE EXECUTION RESULT ==========
+2026-04-11 10:00:05 | INFO | Status: success
+2026-04-11 10:00:05 | INFO | Elapsed: 5.23s
+```
+
+### 配置变更
+
+#### 日志配置
+
+在 `etc/tsc_ansible_mcp.toml` 中添加 ansible 执行日志配置：
+
+```toml
+[logging]
+dir = "logs"
+level = "DEBUG"
+ansible_execution_log = "ansible_execution.log"
+ansible_execution_enabled = true
+ansible_execution_retention = "30 days"
+ansible_execution_rotation = "50 MB"
+```
+
+### 文件变更
+
+#### 新增文件
+
+- `lib/ansible_logger.py` - Ansible 执行详细日志记录器
+
+#### 修改文件
+
+- `lib/config.py` - 添加 ansible 日志配置属性
+- `lib/executor.py` - 集成 ansible 执行日志记录
+- `etc/tsc_ansible_mcp.toml` - 添加 ansible 日志配置
+- `docs/PRD.md` - 添加 ansible 执行日志需求
+- `docs/SPEC.md` - 添加 ansible 执行日志规格
+- `docs/ARCHITECTURE.md` - 添加日志架构说明
+- `docs/TODO.md` - 添加任务清单
+
+### 文档更新
+
+- 更新 `docs/PRD.md` - 添加 Ansible 执行日志需求
+- 更新 `docs/SPEC.md` - 添加 Ansible 执行日志规格
+- 更新 `docs/ARCHITECTURE.md` - 添加日志架构说明
+- 更新 `README.md` - 添加 v1.8.0 功能说明
+
+---
+
 ## Version=1.7.0
 
 2026-04-09
@@ -251,6 +484,7 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 ```
 
 **权限说明**:
+
 - `*`: 表示所有工具
 - `playbook_*`: 表示所有动态生成的 playbook 工具
 

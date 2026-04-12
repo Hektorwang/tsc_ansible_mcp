@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 Base = declarative_base()
 
 
-class Task(Base):
+class Task(Base):  # type: ignore[misc,valid-type]
     """任务模型"""
 
     __tablename__ = "tasks"
@@ -37,7 +37,7 @@ class Task(Base):
         }
 
 
-class Context(Base):
+class Context(Base):  # type: ignore[misc,valid-type]
     """持久化上下文模型"""
 
     __tablename__ = "context"

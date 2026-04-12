@@ -18,3 +18,4 @@ PyJWT>=2.8.0
 # ipython
 # mcp[cli]
 # pytest>=7.0.0
+# types-PyYAML

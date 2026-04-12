@@ -43,7 +43,7 @@ class InventoryManager:
     def _save(self) -> None:
         """保存 Inventory（线程安全，使用文件锁）"""
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -51,7 +51,9 @@ class InventoryManager:
                     # 获取文件锁
                     fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                     try:
-                        yaml.dump(self._data, f, default_flow_style=False, allow_unicode=True)
+                        yaml.dump(
+                            self._data, f, default_flow_style=False, allow_unicode=True
+                        )
                         logger.debug(f"保存 Inventory: {self.path}")
                     finally:
                         # 释放文件锁
@@ -59,7 +61,9 @@ class InventoryManager:
                 break
             except (IOError, BlockingIOError) as e:
                 if attempt < max_retries - 1:
-                    logger.warning(f"Inventory 文件被锁定，等待重试 ({attempt + 1}/{max_retries})")
+                    logger.warning(
+                        f"Inventory 文件被锁定，等待重试 ({attempt + 1}/{max_retries})"
+                    )
                     time.sleep(0.1 * (attempt + 1))
                 else:
                     logger.error(f"保存 Inventory 失败（文件锁超时）: {e}")
@@ -95,7 +99,11 @@ class InventoryManager:
             host_data["ansible_ssh_private_key_file"] = private_key
         self._save()
         logger.info(f"添加/更新主机到 Inventory: {host}")
-        return {"status": "success", "message": "主机已添加/更新到 Inventory", "host": host}
+        return {
+            "status": "success",
+            "message": "主机已添加/更新到 Inventory",
+            "host": host,
+        }
 
     def update_host_credentials(
         self,
@@ -112,11 +120,11 @@ class InventoryManager:
             self._data["all"]["hosts"] = {}
         if host not in self._data["all"]["hosts"]:
             self._data["all"]["hosts"][host] = {"ansible_host": host}
-        
+
         host_data = self._data["all"]["hosts"][host]
         if "ansible_host" not in host_data:
             host_data["ansible_host"] = host
-        
+
         if user:
             host_data["ansible_user"] = user
         if port:
@@ -125,7 +133,7 @@ class InventoryManager:
             host_data["ansible_password"] = password
         if private_key:
             host_data["ansible_ssh_private_key_file"] = private_key
-        
+
         self._save()
         logger.info(f"更新主机凭据到 Inventory: {host}")
         return {"status": "success", "message": "主机凭据已更新", "host": host}
@@ -144,7 +152,11 @@ class InventoryManager:
         self._data["all"]["hosts"][host]["ansible_python_interpreter"] = python_path
         self._save()
         logger.info(f"更新主机 Python 解释器: {host} -> {python_path}")
-        return {"status": "success", "message": f"Python 解释器已更新: {python_path}", "host": host}
+        return {
+            "status": "success",
+            "message": f"Python 解释器已更新: {python_path}",
+            "host": host,
+        }
 
     def get_host(self, host: str) -> Optional[Dict[str, Any]]:
         hosts = self._data.get("all", {}).get("hosts", {})
@@ -156,9 +168,17 @@ class InventoryManager:
             del hosts[host]
             self._save()
             logger.info(f"从 Inventory 删除主机: {host}")
-            return {"status": "success", "message": "主机已从 Inventory 删除", "host": host}
+            return {
+                "status": "success",
+                "message": "主机已从 Inventory 删除",
+                "host": host,
+            }
         logger.warning(f"主机不存在于 Inventory: {host}")
-        return {"status": "not_found", "message": "主机不存在于 Inventory", "host": host}
+        return {
+            "status": "not_found",
+            "message": "主机不存在于 Inventory",
+            "host": host,
+        }
 
     def list_hosts(self) -> Dict[str, Any]:
         hosts = self._data.get("all", {}).get("hosts", {})

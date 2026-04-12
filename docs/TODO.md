@@ -1,5 +1,84 @@
 # TSC_ANSIBLE_MCP 开发任务清单
 
+## v1.9.0 已完成任务
+
+### 结果摘要模式
+
+#### 基础设施
+
+- [x] 创建 `lib/task_result_store.py` 模块
+- [x] 实现 `TaskResultStore` 类
+  - [x] 实现 `save_result()` 方法
+  - [x] 实现 `get_result()` 方法
+  - [x] 实现 `get_host_result()` 方法
+  - [x] 实现 `get_failed_hosts()` 方法
+  - [x] 实现 `get_all_results()` 方法
+- [x] 在 `lib/config.py` 中添加配置属性
+- [x] 在 `etc/tsc_ansible_mcp.toml` 中添加配置项
+
+#### 核心功能开发
+
+- [x] 修改 `lib/executor.py`
+  - [x] 实现 `_build_summary_result()` 方法
+  - [x] 修改 `ansible_shell()` 返回格式
+  - [x] 修改 `run_playbook()` 返回格式
+  - [x] 修改 `dispatch_file()` 返回格式
+  - [x] 修改 `ansible_fetch()` 返回格式
+  - [x] 修改 `check_host_status()` 返回格式
+  - [x] 修改 `install_python()` 返回格式
+  - [x] 修改 `install_tsc_tools()` 返回格式
+
+#### MCP 查询工具
+
+- [x] 在 `lib/server.py` 中添加查询工具
+  - [x] 实现 `get_task_detail` 工具
+  - [x] 实现 `get_failed_hosts` 工具
+  - [x] 实现 `get_all_results` 工具
+
+#### 文档更新
+
+- [x] 更新 PRD.md - 添加结果摘要模式说明
+- [x] 更新 SPEC.md - 添加返回格式规格
+- [x] 更新 ARCHITECTURE.md - 添加存储架构说明
+- [x] 更新 TODO.md - 添加任务清单
+- [x] 更新 release-note.md - 添加版本更新说明
+
+---
+
+## v1.8.0 已完成任务
+
+### Ansible 执行详细日志记录
+
+#### 基础设施
+
+- [x] 创建 `lib/ansible_logger.py` 模块
+- [x] 实现 `AnsibleExecutionLogger` 类
+  - [x] 实现 `_setup_logger()` 方法
+  - [x] 实现 `log_execution_start()` 方法
+  - [x] 实现 `log_execution_event()` 方法
+  - [x] 实现 `log_execution_result()` 方法
+  - [x] 实现 `log_execution_error()` 方法
+- [x] 在 `lib/config.py` 中添加 ansible 日志配置属性
+- [x] 在 `etc/tsc_ansible_mcp.toml` 中添加配置项
+
+#### 核心功能开发
+
+- [x] 修改 `lib/executor.py`
+  - [x] 在 `_run_ansible()` 方法中集成日志记录
+  - [x] 在执行前记录完整的 playbook 和 inventory
+  - [x] 遍历所有事件并记录详细信息
+  - [x] 在执行后记录结果汇总
+
+#### 文档更新
+
+- [x] 更新 PRD.md - 添加 ansible 执行日志需求
+- [x] 更新 SPEC.md - 添加 ansible 执行日志规格
+- [x] 更新 ARCHITECTURE.md - 添加日志架构说明
+- [x] 更新 TODO.md - 添加任务清单
+- [x] 更新 release-note.md - 添加版本更新说明
+
+---
+
 ## v1.6.0 已完成任务
 
 ### MCP 工具列表角色过滤

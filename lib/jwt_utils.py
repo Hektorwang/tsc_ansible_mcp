@@ -170,7 +170,9 @@ class JWTUtils:
         logger.debug(f"开始验证JWT: token长度={len(token)}, token前缀={token[:30]}...")
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[JWT_ALGORITHM])
-            logger.debug(f"JWT验证成功: sub={payload.get('sub')}, name={payload.get('name')}, role={payload.get('role')}")
+            logger.debug(
+                f"JWT验证成功: sub={payload.get('sub')}, name={payload.get('name')}, role={payload.get('role')}"
+            )
             return payload
         except jwt.ExpiredSignatureError:
             logger.warning(f"JWT已过期: token={token[:30]}...")
@@ -216,9 +218,11 @@ class JWTUtils:
             有权限返回 True，无权限返回 False
         """
         logger.debug(f"检查权限: role={role}, tool={tool_name}")
-        
+
         if role not in self.tool_permissions:
-            logger.warning(f"未知角色: {role}, 可用角色: {list(self.tool_permissions.keys())}")
+            logger.warning(
+                f"未知角色: {role}, 可用角色: {list(self.tool_permissions.keys())}"
+            )
             return False
 
         permissions = self.tool_permissions[role]
@@ -226,7 +230,9 @@ class JWTUtils:
 
         for pattern in permissions:
             if self._match_permission(pattern, tool_name):
-                logger.debug(f"权限匹配成功: role={role}, tool={tool_name}, pattern={pattern}")
+                logger.debug(
+                    f"权限匹配成功: role={role}, tool={tool_name}, pattern={pattern}"
+                )
                 return True
 
         logger.debug(f"权限匹配失败: role={role}, tool={tool_name}, 无匹配的pattern")
@@ -243,7 +249,7 @@ class JWTUtils:
             匹配成功返回 True
         """
         logger.debug(f"匹配权限模式: pattern={pattern}, tool={tool_name}")
-        
+
         if pattern == "*":
             logger.debug(f"通配符匹配: pattern={pattern}")
             return True
@@ -251,11 +257,15 @@ class JWTUtils:
         if pattern.endswith("*"):
             prefix = pattern[:-1]
             matched = tool_name.startswith(prefix)
-            logger.debug(f"前缀匹配: pattern={pattern}, prefix={prefix}, matched={matched}")
+            logger.debug(
+                f"前缀匹配: pattern={pattern}, prefix={prefix}, matched={matched}"
+            )
             return matched
 
         matched = pattern == tool_name
-        logger.debug(f"精确匹配: pattern={pattern}, tool={tool_name}, matched={matched}")
+        logger.debug(
+            f"精确匹配: pattern={pattern}, tool={tool_name}, matched={matched}"
+        )
         return matched
 
     def get_user_permissions(self, role: str) -> List[str]:

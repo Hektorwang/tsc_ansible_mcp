@@ -4,24 +4,24 @@
 MCP + REST API 统一服务入口
 """
 
+import json
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
 from lib.auth import AuthMiddleware
 from lib.config import Config
-from lib.context_vars import set_current_user, get_current_role
-from lib.database import Database, TaskRepository, ContextRepository
+from lib.context_vars import get_current_role, set_current_user
+from lib.database import ContextRepository, Database, TaskRepository
 from lib.executor import Executor
 from lib.inventory_manager import InventoryManager
 from lib.logger import get_logger
-from lib.permission import require_permission, check_tool_permission
+from lib.permission import check_tool_permission, require_permission
 from lib.playbook_scanner import PlaybookScanner
 
 logger = get_logger()
@@ -179,7 +179,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         self.playbook_scanner = PlaybookScanner(self.config)
         self.mcp = FastMCP(
             name="tsc_ansible_mcp",
-            version="1.7.0",
+            version=self.config.mcp_version,
             instructions=self.MCP_INSTRUCTIONS,
         )
         self._register_mcp_tools()
@@ -189,16 +189,47 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
     def _register_mcp_tools(self) -> None:
         @self.mcp.tool(
             name="ansible_shell",
-            description="""在目标主机上执行 shell 命令。支持同时向多台主机批量执行命令，返回每台主机的执行结果。
+            description="""Execute shell commands on target hosts using Ansible. Supports batch execution across multiple targets and returns the result for each host individually.
 
-重要提示：
-- 执行前会自动检查主机状态，如果 Python 未安装会自动安装
-- 建议先调用 check_host_status 确认主机环境
+## Prerequisites & Safety
+- **Auto-Installation**: The tool automatically checks for Python3 on target hosts. If missing, it will install `tsc_python` before execution.
+- **Pre-check**: It is highly recommended to call `check_host_status` first to ensure the environment is ready.
 
-命令格式注意：
-- 命令中包含双引号时，请使用单引号替代，例如: find /tmp -name '*.json'
-- 或者在 JSON 中转义双引号，例如: find /tmp -name \"*.json\"
-- 避免在命令中使用复杂的引号嵌套""",
+## Authentication & Connection
+The following parameters allow customizing the connection:
+- `targets`: List of target hostnames or IPs.
+- `user`: SSH username (optional, defaults to current user).
+- `port`: SSH port (optional, defaults to 22).
+- `password`: SSH password (optional, use only if key-based auth is not configured).
+- `private_key`: Path or content of the private key file (optional).
+- `timeout`: Command execution timeout in seconds (optional).
+
+## Command Formatting Rules (Critical)
+To ensure reliable execution, strictly follow these quoting rules:
+1. **Preferred**: Wrap arguments in **single quotes** to avoid escaping issues. 
+   - Good: `find /tmp -name '*.json'`
+2. **Alternative**: If double quotes are required, escape them using backslashes in the JSON string.
+   - Good: `find /tmp -name \"*.json\"`
+3. **Forbidden**: Do not use complex nested quotes. Simplify the command logic instead.
+
+## Usage Examples
+{
+  "arguments": {
+    "targets": ["web-server-01", "db-server-02"],
+    "command": "ls -la /var/log",
+  }
+}
+// Example with authentication and special characters:
+{
+  "arguments": {
+    "targets": ["app-node-01"],
+    "command": "grep 'error' /var/log/app.log",
+    "user": "deploy",
+    "port": 2222,
+    "private_key": "/path/to/key.pem"
+  }
+}
+""",
         )
         def ansible_shell(
             targets: List[str],
@@ -213,7 +244,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             permission_error = check_tool_permission(self.auth, "ansible_shell")
             if permission_error:
                 return permission_error
-            
+
             logger.info(
                 f"MCP 工具调用: ansible_shell, targets={targets}, command={command}"
             )
@@ -237,8 +268,8 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     command=command,
                     credentials=credentials if credentials else None,
                     timeout=timeout,
+                    task_id=task_id,
                 )
-                result["task_id"] = task_id
                 self.task_repo.update(task_id, result["status"], result)
                 return result
             except Exception as e:
@@ -248,17 +279,35 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @self.mcp.tool(
             name="install_python",
-            description="""在目标主机上安装 tsc_python 环境（独立的 Python 环境）。
+            description="""
+# Task: Install tsc_python Environment
 
-重要说明：
-- 此工具安装的是 tsc_python，不是系统 Python
-- 即使目标主机已有系统 Python，也可以安装 tsc_python
-- tsc_python 是独立的 Python 环境，不会影响系统 Python
-- 安装前必须先安装 tsc_tools！如果 tsc_tools 未安装，请先调用 install_tsc_tools 工具
+## Workflow
 
-安装条件：
-- 如果 tsc_python 已安装 → 跳过安装
-- 如果 tsc_python 未安装 → 执行安装（无论是否有系统 Python）""",
+- Check host status (verify if tsc_tools and tsc_python are installed)
+- If tsc_tools is not installed, install tsc_tools first
+- If tsc_python is not installed, install tsc_python
+
+## Tool Calls
+
+```json
+{
+  "name": "install_python",
+  "arguments": {
+    "targets": ["host1.example.com"],
+    "password": "my_psw", //Optional
+    "private_key": "path_to_key_file", //Optional
+    "timeout": 600, //Optional
+    "user": "admin", 
+    "port": 22 //Optional
+  }
+}
+```
+## Decision Logic
+
+- If tsc_python is already installed → Skip installation
+- If tsc_python is not installed, → Execute install_python
+""",
         )
         def install_python(
             targets: List[str],
@@ -266,15 +315,15 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             port: Optional[int] = None,
             password: Optional[str] = None,
             private_key: Optional[str] = None,
-            version: Optional[str] = None,
-            date: Optional[str] = None,
+            # version: Optional[str] = None,
+            # date: Optional[str] = None,
             timeout: Optional[int] = None,
         ) -> Dict[str, Any]:
             # 权限检查（双重保护）
             permission_error = check_tool_permission(self.auth, "install_python")
             if permission_error:
                 return permission_error
-            
+
             logger.info(f"MCP 工具调用: install_python, targets={targets}")
             credentials: Dict[str, Any] = {}
             if user:
@@ -292,9 +341,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 result = self.executor.install_python(
                     targets=targets,
                     credentials=credentials if credentials else None,
-                    version=version,
-                    date=date,
+                    # version=version,
+                    # date=date,
                     timeout=timeout,
+                    task_id=task_id,
                 )
                 failed_hosts = []
                 for host, r in result.get("results", {}).items():
@@ -354,7 +404,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             permission_error = check_tool_permission(self.auth, "check_host_status")
             if permission_error:
                 return permission_error
-            
+
             logger.info(f"MCP 工具调用: check_host_status, targets={targets}")
             credentials: Dict[str, Any] = {}
             if user:
@@ -373,8 +423,8 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     targets=targets,
                     credentials=credentials if credentials else None,
                     timeout=timeout,
+                    task_id=task_id,
                 )
-                result["task_id"] = task_id
                 self.task_repo.update(task_id, "success", result)
                 return result
             except Exception as e:
@@ -405,15 +455,15 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             port: Optional[int] = None,
             password: Optional[str] = None,
             private_key: Optional[str] = None,
-            version: Optional[str] = None,
-            date: Optional[str] = None,
+            # version: Optional[str] = None,
+            # date: Optional[str] = None,
             timeout: Optional[int] = None,
         ) -> Dict[str, Any]:
             # 权限检查（双重保护）
             permission_error = check_tool_permission(self.auth, "install_tsc_tools")
             if permission_error:
                 return permission_error
-            
+
             logger.info(f"MCP 工具调用: install_tsc_tools, targets={targets}")
             credentials: Dict[str, Any] = {}
             if user:
@@ -431,9 +481,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 result = self.executor.install_tsc_tools(
                     targets=targets,
                     credentials=credentials if credentials else None,
-                    version=version,
-                    date=date,
+                    # version=version,
+                    # date=date,
                     timeout=timeout,
+                    task_id=task_id,
                 )
                 failed_hosts = []
                 for host, r in result.get("results", {}).items():
@@ -447,7 +498,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     result["action_required"] = (
                         "请停止当前流程，向用户报告错误信息，不要继续执行后续操作"
                     )
-                result["task_id"] = task_id
                 self.task_repo.update(
                     task_id,
                     "success" if not failed_hosts else "partial_success",
@@ -489,7 +539,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             permission_error = check_tool_permission(self.auth, "ansible_copy")
             if permission_error:
                 return permission_error
-            
+
             logger.info(
                 f"MCP 工具调用: ansible_copy, targets={targets}, src={src}, dest={dest}"
             )
@@ -514,8 +564,8 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     dest=dest,
                     credentials=credentials if credentials else None,
                     timeout=timeout,
+                    task_id=task_id,
                 )
-                result["task_id"] = task_id
                 self.task_repo.update(task_id, result["status"], result)
                 return result
             except Exception as e:
@@ -546,7 +596,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             permission_error = check_tool_permission(self.auth, "ansible_fetch")
             if permission_error:
                 return permission_error
-            
+
             logger.info(
                 f"MCP 工具调用: ansible_fetch, targets={targets}, src={src}, dest={dest}"
             )
@@ -572,14 +622,71 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     credentials=credentials if credentials else None,
                     flat=flat,
                     timeout=timeout,
+                    task_id=task_id,
                 )
-                result["task_id"] = task_id
                 self.task_repo.update(task_id, result["status"], result)
                 return result
             except Exception as e:
                 logger.exception(f"ansible_fetch 执行失败: {e}")
                 self.task_repo.update(task_id, "failed", {"error": str(e)})
                 return {"task_id": task_id, "status": "failed", "error": str(e)}
+
+        @self.mcp.tool(
+            name="get_task_detail",
+            description="查询特定主机在指定任务中的执行详情。当执行结果返回摘要信息时，使用此工具获取特定主机的详细执行结果。",
+        )
+        def get_task_detail(
+            task_id: str,
+            host: str,
+        ) -> Dict[str, Any]:
+            logger.info(
+                f"MCP 工具调用: get_task_detail, task_id={task_id}, host={host}"
+            )
+            from lib.task_result_store import task_result_store
+
+            result = task_result_store.get_host_result(task_id, host)
+            if result is None:
+                return {
+                    "task_id": task_id,
+                    "host": host,
+                    "status": "not_found",
+                    "message": f"任务 {task_id} 不存在或主机 {host} 无结果",
+                }
+
+            return {
+                "task_id": task_id,
+                "host": host,
+                "status": "success",
+                "result": result,
+            }
+
+        @self.mcp.tool(
+            name="get_failed_hosts",
+            description="查询指定任务中所有失败主机的详情。当执行结果包含失败主机时，使用此工具获取失败主机的详细错误信息。",
+        )
+        def get_failed_hosts(
+            task_id: str,
+            limit: int = 20,
+            offset: int = 0,
+        ) -> Dict[str, Any]:
+            logger.info(f"MCP 工具调用: get_failed_hosts, task_id={task_id}")
+            from lib.task_result_store import task_result_store
+
+            return task_result_store.get_failed_hosts(task_id, limit, offset)
+
+        @self.mcp.tool(
+            name="get_all_results",
+            description="分页查询指定任务的所有主机执行结果。当需要查看所有主机的执行结果时，使用此工具进行分页查询。",
+        )
+        def get_all_results(
+            task_id: str,
+            limit: int = 20,
+            offset: int = 0,
+        ) -> Dict[str, Any]:
+            logger.info(f"MCP 工具调用: get_all_results, task_id={task_id}")
+            from lib.task_result_store import task_result_store
+
+            return task_result_store.get_all_results(task_id, limit, offset)
 
         @self.mcp.tool(
             name="list_playbooks",
@@ -604,12 +711,21 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             port: Optional[int] = None,
             password: Optional[str] = None,
             private_key: Optional[str] = None,
-            extravars: Optional[Dict[str, Any]] = None,
+            extravars: Optional[Union[Dict[str, Any], str]] = None,
             timeout: Optional[int] = None,
         ) -> Dict[str, Any]:
             logger.info(
                 f"MCP 工具调用: ansible_playbook, playbook={playbook}, targets={targets}"
             )
+            parsed_extravars: Optional[Dict[str, Any]] = None
+            if extravars is not None:
+                if isinstance(extravars, str):
+                    try:
+                        parsed_extravars = json.loads(extravars)
+                    except json.JSONDecodeError:
+                        parsed_extravars = None
+                else:
+                    parsed_extravars = extravars
             credentials: Dict[str, Any] = {}
             if user:
                 credentials["user"] = user
@@ -629,10 +745,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     playbook=playbook,
                     targets=targets,
                     credentials=credentials if credentials else None,
-                    extravars=extravars,
+                    extravars=parsed_extravars,
                     timeout=timeout,
+                    task_id=task_id,
                 )
-                result["task_id"] = task_id
                 self.task_repo.update(task_id, result["status"], result)
                 return result
             except Exception as e:
@@ -703,10 +819,21 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     port: Optional[int] = None,
                     password: Optional[str] = None,
                     private_key: Optional[str] = None,
-                    extravars: Optional[Dict[str, Any]] = None,
+                    extravars: Optional[Union[Dict[str, Any], str]] = None,
                     timeout: Optional[int] = None,
                 ) -> Dict[str, Any]:
-                    logger.info(f"MCP 工具调用: playbook_{playbook_name}, targets={targets}")
+                    logger.info(
+                        f"MCP 工具调用: playbook_{playbook_name}, targets={targets}"
+                    )
+                    parsed_extravars: Optional[Dict[str, Any]] = None
+                    if extravars is not None:
+                        if isinstance(extravars, str):
+                            try:
+                                parsed_extravars = json.loads(extravars)
+                            except json.JSONDecodeError:
+                                parsed_extravars = None
+                        else:
+                            parsed_extravars = extravars
                     credentials: Dict[str, Any] = {}
                     if user:
                         credentials["user"] = user
@@ -724,10 +851,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                             playbook=playbook_name,
                             targets=targets,
                             credentials=credentials if credentials else None,
-                            extravars=extravars,
+                            extravars=parsed_extravars,
                             timeout=timeout,
+                            task_id=task_id,
                         )
-                        result["task_id"] = task_id
                         self.task_repo.update(task_id, result["status"], result)
                         return result
                     except Exception as e:
@@ -760,7 +887,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         app = FastAPI(
             title="TSC_ANSIBLE_MCP API",
             description="TSC Ansible MCP REST API 服务",
-            version="1.7.0",
+            version="1.10.0",
             docs_url="/docs",
             redoc_url="/redoc",
         )
@@ -795,8 +922,8 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     command=request.command,
                     credentials=credentials if credentials else None,
                     timeout=request.timeout,
+                    task_id=task_id,
                 )
-                result["task_id"] = task_id
                 self.task_repo.update(task_id, result["status"], result)
                 return result
             except Exception as e:
@@ -857,6 +984,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     targets=request.targets,
                     credentials=credentials if credentials else None,
                     timeout=request.timeout,
+                    task_id=task_id,
                 )
                 self.task_repo.update(task_id, "success", result)
                 return result
@@ -887,6 +1015,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     version=request.version,
                     date=request.date,
                     timeout=request.timeout,
+                    task_id=task_id,
                 )
                 task_status = (
                     "success"
@@ -925,6 +1054,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     version=request.version,
                     date=request.date,
                     timeout=request.timeout,
+                    task_id=task_id,
                 )
                 task_status = (
                     "success"
@@ -965,8 +1095,8 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     dest=request.dest,
                     credentials=credentials if credentials else None,
                     timeout=request.timeout,
+                    task_id=task_id,
                 )
-                result["task_id"] = task_id
                 self.task_repo.update(task_id, result["status"], result)
                 return result
             except Exception as e:
@@ -1002,8 +1132,8 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     credentials=credentials if credentials else None,
                     flat=request.flat,
                     timeout=request.timeout,
+                    task_id=task_id,
                 )
-                result["task_id"] = task_id
                 self.task_repo.update(task_id, result["status"], result)
                 return result
             except Exception as e:
@@ -1044,8 +1174,8 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     credentials=credentials if credentials else None,
                     extravars=request.extravars,
                     timeout=request.timeout,
+                    task_id=task_id,
                 )
-                result["task_id"] = task_id
                 self.task_repo.update(task_id, result["status"], result)
                 return result
             except Exception as e:
@@ -1106,6 +1236,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         # 然后我们会将它挂载到 FastAPI 的 /mcp 路径
         mcp_app = self.mcp.http_app(path="/", transport="streamable-http")
         from contextlib import asynccontextmanager
+
         from lib.middleware import MCPAuthorizationMiddleware
 
         @asynccontextmanager
@@ -1125,5 +1256,5 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         # 这样 MCP 端点在 http://host:port/mcp
         # REST API 端点在 http://host:port/api/v1/...
         self.app.mount("/mcp", authorized_mcp_app)
-        
+
         return self.app

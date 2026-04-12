@@ -1,16 +1,25 @@
 # TSC_ANSIBLE_MCP 配置文件
+[tsc_repo]
+base_url = "http://192.168.19.22/tsc_install"
+local_path = "/home/tsc/cicd/html/tsc_install"
+
+[auth]
+enabled = true
+jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
+jwt_secret_key_file = "etc/jwt_secret_key.txt"
+
+[auth.tool_permissions]
+admin = ["*"]
+user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 
 [mcp]
 default_timeout = 600
 host = "0.0.0.0"
 max_timeout = 3600
+mcp_version = "1.9.0"
 path = "/mcp"
 port = 8500
 transport = "http"
-
-[tsc_repo]
-base_url = "http://192.168.19.22/tsc_install"
-local_path = "/home/tsc/cicd/html/tsc_install"
 
 # 安装包 URL 模板（支持变量: {version}, {distro}, {arch}, {date}）
 tsc_python_url_template = "/tsc_python-{version}-{distro}-{arch}-{date}.sh"
@@ -47,6 +56,9 @@ high_risk_commands = ["rm", "unlink", "halt", "shutdown", "mkfs", "parted", "reb
 
 [execution]
 forks = 10
+max_failed_detail = 10
+max_output_length = 1000
+result_store_dir = "logs/task_results"
 serial = 10
 timeout = 300
 
@@ -54,14 +66,9 @@ timeout = 300
 path = "playbooks"
 
 [logging]
+ansible_execution_enabled = true
+ansible_execution_log = "ansible_execution.log"
+ansible_execution_retention = "30 days"
+ansible_execution_rotation = "50 MB"
 dir = "logs"
 level = "DEBUG"
-
-[auth]
-enabled = true
-jwt_secret_key_file = "etc/jwt_secret_key.txt"
-jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
-
-[auth.tool_permissions]
-admin = ["*"]
-user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]

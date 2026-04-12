@@ -6,10 +6,11 @@ TSC_ANSIBLE_MCP 统一服务入口
 """
 
 import sys
+import os
 from pathlib import Path
 import uvicorn
 
-project_root = str(Path(__file__).parent.parent)
+project_root = str(Path(__file__).parent.parent.absolute())
 if sys.path and sys.path[0] != project_root:
     if project_root in sys.path:
         sys.path.remove(project_root)
@@ -21,6 +22,9 @@ from lib.logger import get_logger, setup_logger
 from lib.server import Server
 
 logger = get_logger()
+os.environ["ANSIBLE_CONFIG"] = (
+    (Path(project_root) / "ansible.cfg").absolute().as_posix()
+)
 
 
 def main():

@@ -4,7 +4,7 @@
 """
 
 from functools import wraps
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 from lib.context_vars import get_current_role
 from lib.logger import get_logger
@@ -51,13 +51,11 @@ def require_permission(tool_name: str):
                         "message": "Internal error: auth not initialized",
                     }
 
-                auth = Server._auth_instance
+                auth = Server._auth_instance  # pylint: disable=no-member
 
                 # 检查权限
                 if not auth.jwt_utils.check_permission(role, tool_name):
-                    logger.warning(
-                        f"工具调用权限不足: Role={role}, Tool={tool_name}"
-                    )
+                    logger.warning(f"工具调用权限不足: Role={role}, Tool={tool_name}")
                     return {
                         "status": "error",
                         "message": f"Permission denied: role '{role}' cannot access tool '{tool_name}'",
@@ -78,7 +76,9 @@ def require_permission(tool_name: str):
     return decorator
 
 
-def check_tool_permission(auth_instance: Any, tool_name: str) -> Dict[str, Any]:
+def check_tool_permission(
+    auth_instance: Any, tool_name: str
+) -> Optional[Dict[str, Any]]:
     """检查工具调用权限（非装饰器版本）
 
     Args:

@@ -5,14 +5,11 @@
 """
 
 import re
-import yaml
+import tomllib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib
+import yaml
 
 
 class Config:
@@ -146,6 +143,10 @@ class Config:
     @property
     def max_timeout(self) -> int:
         return self.mcp_settings.get("max_timeout", 3600)
+
+    @property
+    def mcp_version(self) -> str:
+        return self.mcp_settings.get("mcp_version", "99.99.99")
 
     @property
     def nginx_settings(self) -> Dict[str, Any]:
@@ -287,7 +288,9 @@ class Config:
     def _save_cache(self) -> None:
         cache_path = self._get_cache_path()
         with cache_path.open("w", encoding="utf-8") as f:
-            yaml.dump(self._package_cache, f, default_flow_style=False, allow_unicode=True)
+            yaml.dump(
+                self._package_cache, f, default_flow_style=False, allow_unicode=True
+            )
 
     def get_python_install_url(
         self,
@@ -313,10 +316,13 @@ class Config:
             return self._package_cache["tsc_python"][key]["url"]
 
         import logging
+
         logger = logging.getLogger(__name__)
         logger.warning(f"缓存中未找到 {key}，使用默认 URL")
-        logger.warning(f"可用的缓存键: {list(self._package_cache.get('tsc_python', {}).keys())}")
-        
+        logger.warning(
+            f"可用的缓存键: {list(self._package_cache.get('tsc_python', {}).keys())}"
+        )
+
         url_path = self.tsc_python_url_template.format(
             version="0.9.5",
             date="20260330",
@@ -335,7 +341,9 @@ class Config:
         if "latest" in self._package_cache.get("tsc_tools", {}):
             return self._package_cache["tsc_tools"]["latest"]["url"]
 
-        url_path = self.tsc_tools_url_template.format(version="2.0.3.beta10", date="20260210")
+        url_path = self.tsc_tools_url_template.format(
+            version="2.0.3.beta10", date="20260210"
+        )
         return f"{self.nginx_base_url}{url_path}"
 
     def is_high_risk_command(self, command: str) -> bool:
@@ -345,3 +353,45 @@ class Config:
             if risk_cmd in cmd_parts:
                 return True
         return False
+
+    @property
+    def logging_settings(self) -> Dict[str, Any]:
+        return self.get("logging", {})
+
+    @property
+    def logging_dir(self) -> str:
+        return self.logging_settings.get("dir", "logs")
+
+    @property
+    def logging_level(self) -> str:
+        return self.logging_settings.get("level", "INFO")
+
+    @property
+    def ansible_execution_log(self) -> str:
+        return self.logging_settings.get(
+            "ansible_execution_log", "ansible_execution.log"
+        )
+
+    @property
+    def ansible_execution_enabled(self) -> bool:
+        return self.logging_settings.get("ansible_execution_enabled", True)
+
+    @property
+    def ansible_execution_retention(self) -> str:
+        return self.logging_settings.get("ansible_execution_retention", "30 days")
+
+    @property
+    def ansible_execution_rotation(self) -> str:
+        return self.logging_settings.get("ansible_execution_rotation", "50 MB")
+
+    @property
+    def max_failed_detail(self) -> int:
+        return self.execution_settings.get("max_failed_detail", 10)
+
+    @property
+    def max_output_length(self) -> int:
+        return self.execution_settings.get("max_output_length", 1000)
+
+    @property
+    def result_store_dir(self) -> str:
+        return self.execution_settings.get("result_store_dir", "logs/task_results")

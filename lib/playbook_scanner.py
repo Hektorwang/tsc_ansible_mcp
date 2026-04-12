@@ -247,9 +247,13 @@ class PlaybookScanner:
 
             if "parameters" in metadata:
                 for param in metadata["parameters"]:
-                    if "default" in param:
+                    if param.get("required") is False:
                         param["description"] = (
-                            f"{param.get('description', '')} (default: {param['default']})"
+                            f"{param.get('description', '')} [optional]"
+                        )
+                    elif param.get("required") is True:
+                        param["description"] = (
+                            f"{param.get('description', '')} [required]"
                         )
 
             return metadata
@@ -276,7 +280,7 @@ class PlaybookScanner:
             description_parts.append(metadata["description"])
 
         if metadata.get("parameters"):
-            description_parts.append("\n参数说明:")
+            description_parts.append("Parameters Instruction:")
             for param in metadata["parameters"]:
                 param_desc = f"  - {param['name']}"
                 if param.get("type"):
@@ -286,19 +290,19 @@ class PlaybookScanner:
                 description_parts.append(param_desc)
 
         if metadata.get("use_cases"):
-            description_parts.append("\n使用场景:")
+            description_parts.append("Use Cases:")
             for use_case in metadata["use_cases"]:
                 description_parts.append(f"  - {use_case}")
 
         if metadata.get("example"):
-            description_parts.append("\n示例:")
+            description_parts.append("Example:")
             example = metadata["example"]
             example_str = json.dumps(example, indent=2, ensure_ascii=False)
             for line in example_str.split("\n"):
                 description_parts.append(f"  {line}")
 
         if metadata.get("notes"):
-            description_parts.append("\n注意事项:")
+            description_parts.append("Notes:")
             for note in metadata["notes"]:
                 description_parts.append(f"  - {note}")
 

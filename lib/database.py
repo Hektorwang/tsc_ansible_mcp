@@ -157,33 +157,33 @@ class TaskRepository:
         from sqlalchemy import func
 
         with self.db.get_session() as session:
-            total = session.query(func.count(Task.id)).scalar() or 0
+            total = session.query(func.count(Task.id)).scalar() or 0  # pylint: disable=not-callable
             pending = (
-                session.query(func.count(Task.id))
+                session.query(func.count(Task.id))  # pylint: disable=not-callable
                 .filter(Task.status == "pending")
                 .scalar()
                 or 0
             )
             running = (
-                session.query(func.count(Task.id))
+                session.query(func.count(Task.id))  # pylint: disable=not-callable
                 .filter(Task.status == "running")
                 .scalar()
                 or 0
             )
             success = (
-                session.query(func.count(Task.id))
+                session.query(func.count(Task.id))  # pylint: disable=not-callable
                 .filter(Task.status == "success")
                 .scalar()
                 or 0
             )
             failed = (
-                session.query(func.count(Task.id))
+                session.query(func.count(Task.id))  # pylint: disable=not-callable
                 .filter(Task.status == "failed")
                 .scalar()
                 or 0
             )
             partial_success = (
-                session.query(func.count(Task.id))
+                session.query(func.count(Task.id))  # pylint: disable=not-callable
                 .filter(Task.status == "partial_success")
                 .scalar()
                 or 0

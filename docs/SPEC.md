@@ -1,62 +1,76 @@
-# TSC_ANSIBLE_MCP 技术规格说明
+# Technical Specification (SPEC)
 
-## 1. 技术约束
+## 1. Technical Constraints
 
-### 1.1 运行环境
+### 1.1 Runtime Environment
 
-- `python` 版本: `3.13`, 提供虚环境在项目根目录下 `venv`
-- 本地 `bash` 版本: `5+`
-- 目标主机 `bash` 版本: `4+`
+- **Python Version**: `3.13`. A virtual environment is provided at the project root: `venv`.
+- **Local Bash**: Version `5` or higher.
+- **Target Host Bash**: Version `4` or higher.
 
-### 1.2 必须
+### 1.2 Mandatory Requirements
 
-- 所有文档和代码必须使用`半角`标点符号
-- python 必须`面向对象`
-- python 必须使用 `pathlib` 标准库操作路径
-- python 必须使用 `loguru` 管理日志, 在 `lib` 下封装日志模块 `tsc_logger.py`
-- 数据库管理必须使用 `orm`
-- 若有 api 接口必须提供 `swagger`
-- python `requests` 必须使用 `session`
-- `mcp` 必须对工具提供 `instruction`
-- python 读取 `yaml` 必须使用 `yaml.safe_load()` 或 `yaml.safe_load_all()`
-- python 必须使用 Docstrings(google 风格)
-- javascript 必须使用 JSDoc
-- shell 必须使用函数注释(google 风格)
-- python 必须使用 type hint
-- 必须在项目根目录下放置 `README.md` 文件描述本项目的功能、安装、配置、使用等
-- 必须在项目根目录下放置 `release-note.md` 描述本项目的版本变更, 以及在第三行使用 `## Version=1.5.0` 标识当前版本
+- All documentation and code must use **half-width (ASCII)** punctuation.
+- Python code must follow **Object-Oriented Programming (OOP)** principles.
+- Python path operations must exclusively use the `pathlib` standard library.
+- Logging must be managed via `loguru`. The logging module must be encapsulated in `tsc_logger.py` under the `lib` directory.
+- Database management must utilize an **ORM**.
+- Any API interface must provide **Swagger** documentation.
+- Python `requests` usage must employ a persistent `Session` object.
+- **MCP** tools must include explicit English `instructions` in their definitions.
+- Python YAML parsing must strictly use `yaml.safe_load()` or `yaml.safe_load_all()`.
+- Python code must use **Google-style Docstrings**.
+- JavaScript code must use **JSDoc**.
+- Shell scripts must use **Google-style function comments**.
+- Python code must include **type hints**.
+- A `README.md` file must exist at the project root, describing the project's functionality, installation, configuration, and usage.
+- A `release-note.md` file must exist at the project root to describe version changes. The third line must explicitly state the current version using the format: `## Version=1.5.0` (replace with actual version).
+- A `Dockerfile` must exist at the project root for containerization.
+- A `compose.yml` file must exist for local development environment setup. (Use of `docker-compose.yml` is deprecated).
 
-### 1.3 优先选择
+### 1.3 Prohibitions
 
-- python 重型项目后端优选 `django`, 轻型项目后端优选 `fastapi`
-- 接口选择: `restful` > `rpc`, `异步` > `同步`
-- python 优先选择使用 `sqlalchemy` + `pandas` 操作数据库
-- python 配置文件格式优先选择顺序: `toml` > `ini` > `yaml` > `json` > `python dict`
-- `MCP` 服务优先选择 `Streamable HTTP` > `SSE`
-- python 和 shell 优先选择不用 `eval` 的方式, 若要用, **必须**提示我人工确认该语句
-- 非必须双向交互场景不考虑 `websocket`
+- **No Emojis**: Forbidden in all documentation and code.
+- **No ASCII Art**: Forbidden in all documentation and code. Use **Mermaid** flowchart syntax if diagrams are necessary.
+- **No Procedural Python**: Object-Oriented Programming is mandatory; procedural style is forbidden.
+- **No Raw SQL (Primary Rule)**: Database management and operations must primarily use an **ORM**. **Exception**: `Raw SQL` is allowed **only** for complex read-only analytics or when ORM performance proves insufficient, subject to **Code Review approval**.
+- **No Pickle**: Python `pickle` serialization is forbidden.
+- **No `os.path`**: Python path operations using `os.path` are forbidden (use `pathlib` instead).
+- **No TypeScript**: TypeScript is forbidden.
+- **No Full-width Punctuation**: Full-width characters are forbidden in all documentation and code.
+- **No Complex Shell Logic**: Shell scripts must not use compound statements like multiple `||` or `&&`. Use explicit `if/else/elif` blocks instead.
+- **No Insecure Deserialization**: Forbidden. Always validate and sanitize data from untrusted sources before processing (e.g., JSON payloads, YAML files from external sources).
+- **No Hardcoded Secrets**: Forbidden. Secrets must be loaded from environment variables or secure vaults.
 
-### 1.4 禁止
+### 1.4 Preferred Choices
 
-- 所有文档和代码禁止使用 `emoji`
-- 所有文档和代码禁止画 `ascii文字图`, 若有必要用 `mermaid` 流程图语法
-- python 禁止`面向过程`
-- 数据库管理和操作禁止使用`裸sql`
-- python 禁止使用 `pickle`
-- python 禁止使用 `os.path`
-- 禁止使用 `typescript`
-- 禁止使用`全角`标点符号
-- shell 禁止使用 多重 `||`, `&&` 复合语句, 需使用 `if else elif`
+- **Backend Frameworks**:
+  - **Django**: Default choice for projects requiring a complex built-in **admin interface**, **authentication system**, and rapid CRUD development. Leverages its "batteries-included" philosophy.
+  - **FastAPI**: Preferred for high-concurrency APIs, microservices, or projects prioritizing minimal latency and asynchronous I/O. Suitable when a custom admin panel is preferred over Django's monolithic structure.
+  - **Hybrid Architecture**: Permitted. Use Django for core logic/admin and expose specific endpoints via FastAPI if performance tuning is required.
+- **Interface Design**: `RESTful` > `RPC`; `Asynchronous` > `Synchronous`.
+- **Database Operations**: `SQLAlchemy` (with FastAPI) or `Django ORM` (with Django) as the primary mechanism.
+- **Configuration Files**: Priority order: `TOML` > `INI` > `YAML` > `JSON` > `Python Dict`.
+- **MCP Transport**: Prefer `Streamable HTTP` over `SSE`.
+- **MCP Tools**: All tool definitions must include explicit **English** `instructions` detailing preconditions, inputs, and expected outputs.
+- **Security & Safety**: Avoid `eval()` in Python and Shell. If absolutely necessary, **must request manual human confirmation** before execution.
+- **WebSockets**: Do not consider WebSockets unless bidirectional interaction is strictly required.
 
-### 1.5 代码格式化及校验(若无法通过校验, 提示我人工处理)
+### 1.5 Code Formatting & Validation
 
-- python 脚本通过 `mypy` 校验,
-- python 脚本通过 `black` 格式化
-- python 脚本通过 `pylint` 校验
-- shell 脚本通过 `dev_tools/shfmt` 格式化
-- shell 脚本通过 `dev_tools/shellcheck` 校验
-- ansible 剧本通过 `ansible-lint` 校验
-- javascript 通过 `eslint(google 风格)` 校验
+If validation fails, prompt the user for manual intervention.
+
+- **Python Scripts**:
+  - Type checking via `mypy`.
+  - Formatting via `black`.
+  - Linting via `pylint`.
+- **Shell Scripts**:
+  - Formatting via `dev_tools/shfmt`.
+  - Validation via `dev_tools/shellcheck`.
+- **Ansible Playbooks**:
+  - Validation via `ansible-lint`.
+- **JavaScript**:
+  - Linting via `eslint` (Google Style Guide).
 
 ## 2. 路径约束
 
@@ -303,6 +317,7 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 ### 10.1 核心组件
 
 **PlaybookScanner 类** (`lib/playbook_scanner.py`):
+
 - 扫描 `playbooks/` 目录下的所有 `.yml` 和 `.yaml` 文件
 - 解析 playbook 元数据（JSON 格式）
 - 生成工具定义（名称、描述、参数）
@@ -311,11 +326,13 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 ### 10.2 工具生成规则
 
 **命名规则**:
+
 - 使用 `playbook_` 前缀 + playbook 文件名（不含扩展名）
 - 例如: `collect_iaas_info.yml` -> 工具名 `playbook_collect_iaas_info`
 
 **描述生成**:
 基于元数据字段自动生成结构化描述:
+
 - description: 功能描述
 - parameters: 参数说明
 - use_cases: 使用场景
@@ -324,6 +341,7 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 
 **参数定义**:
 固定参数:
+
 - targets: 目标主机列表
 - user: SSH 用户名
 - port: SSH 端口
@@ -335,17 +353,20 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 ### 10.3 文件监控
 
 **监控机制**:
+
 - 使用 watchdog 库实现跨平台文件监控
 - Linux: 使用 inotify
 - macOS: 使用 FSEvents
 - Windows: 使用 ReadDirectoryChangesW
 
 **监控事件**:
+
 - 文件创建: 新增 playbook 工具
 - 文件修改: 更新 playbook 工具定义
 - 文件删除: 移除 playbook 工具
 
 **热更新限制**:
+
 - 文件变化时会更新缓存
 - 需要重启服务才能使新的工具生效
 - 原因: FastMCP 的工具注册机制限制
@@ -353,9 +374,11 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 ### 10.4 元数据要求
 
 **必填字段**:
+
 - description: playbook 功能描述
 
 **可选字段**:
+
 - author: 作者信息
 - version: 版本号
 - tags: 标签列表
@@ -365,6 +388,7 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 - notes: 注意事项列表
 
 **缺失元数据处理**:
+
 - 跳过没有 description 字段的 playbook
 - 在日志中记录警告信息
 
@@ -374,27 +398,28 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 
 使用 `PyJWT` 库实现 JWT 认证：
 
-| 属性     | 值              |
-| -------- | --------------- |
-| 库名     | PyJWT           |
-| 签名算法 | HS256           |
-| 特性     | 标准 JWT 实现   |
+| 属性     | 值            |
+| -------- | ------------- |
+| 库名     | PyJWT         |
+| 签名算法 | HS256         |
+| 特性     | 标准 JWT 实现 |
 
 ### 12.2 JWT 结构
 
 **Header**:
+
 ```json
-{"alg": "HS256", "typ": "JWT"}
+{ "alg": "HS256", "typ": "JWT" }
 ```
 
 **Payload**:
-| 字段 | 类型   | 必填 | 说明         |
+| 字段 | 类型 | 必填 | 说明 |
 | ---- | ------ | ---- | ------------ |
-| sub  | string | 是   | 用户唯一标识 |
-| name | string | 是   | 用户名称     |
-| role | string | 是   | 用户角色     |
-| iat  | number | 是   | 签发时间戳   |
-| exp  | number | 否   | 过期时间戳   |
+| sub | string | 是 | 用户唯一标识 |
+| name | string | 是 | 用户名称 |
+| role | string | 是 | 用户角色 |
+| iat | number | 是 | 签发时间戳 |
+| exp | number | 否 | 过期时间戳 |
 
 ### 12.3 角色权限配置
 
@@ -412,10 +437,12 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 ```
 
 **权限配置说明**:
+
 - `*`: 表示所有工具
 - `playbook_*`: 表示所有动态生成的 playbook 工具（如 playbook_collect_iaas_info）
 
 **权限验证机制**:
+
 - MCP 工具列表根据角色过滤（v1.6.0 新增）
 - MCP 工具调用时验证用户权限
 - LLM 获取工具列表时，根据角色暴露可用工具
@@ -426,12 +453,12 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 
 使用 MCP 授权中间件实现工具列表过滤：
 
-| 组件 | 文件 | 功能 |
-|------|------|------|
-| 上下文传递 | `lib/context_vars.py` | 使用 contextvars 传递用户信息 |
-| 授权中间件 | `lib/middleware.py` | 拦截 MCP 请求，过滤工具列表 |
-| 权限检查 | `lib/jwt_utils.py` | check_permission 方法 |
-| 工具函数权限检查 | `lib/permission.py` | 工具函数内部的权限检查 |
+| 组件             | 文件                  | 功能                          |
+| ---------------- | --------------------- | ----------------------------- |
+| 上下文传递       | `lib/context_vars.py` | 使用 contextvars 传递用户信息 |
+| 授权中间件       | `lib/middleware.py`   | 拦截 MCP 请求，过滤工具列表   |
+| 权限检查         | `lib/jwt_utils.py`    | check_permission 方法         |
+| 工具函数权限检查 | `lib/permission.py`   | 工具函数内部的权限检查        |
 
 **双重保护机制**（v1.6.0 新增）:
 
@@ -447,6 +474,7 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
    - 实现"深度防御"（Defense in Depth）原则
 
 **工作流程**:
+
 1. MCP Client 发送请求（携带 JWT Token）
 2. 授权中间件提取并验证 JWT
 3. 设置用户上下文（role, name, sub）
@@ -486,6 +514,7 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 ```
 
 **字段说明**（v1.7.0 更新）:
+
 - `jwt_id`: JWT 唯一标识
 - `sub`: 用户唯一标识
 - `name`: 用户名称
@@ -500,15 +529,16 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 
 **文件**: `bin/generate_jwt.py`
 
-| 命令                              | 功能                |
-| --------------------------------- | ------------------- |
-| --generate-key                    | 生成新密钥          |
-| --issue --sub <id> --name <name> --role <role> | 签发 JWT |
-| --issue ... --expires <duration>  | 签发带过期时间的JWT |
-| --list                            | 列出已签发 JWT      |
-| --verify <token>                  | 验证 JWT            |
+| 命令                                           | 功能                |
+| ---------------------------------------------- | ------------------- |
+| --generate-key                                 | 生成新密钥          |
+| --issue --sub <id> --name <name> --role <role> | 签发 JWT            |
+| --issue ... --expires <duration>               | 签发带过期时间的JWT |
+| --list                                         | 列出已签发 JWT      |
+| --verify <token>                               | 验证 JWT            |
 
 **撤销 JWT/密钥**：
+
 - 撤销 JWT：直接编辑 `etc/jwt_issued_tokens.json`，删除对应记录，重启服务
 - 更换密钥：直接编辑 `etc/jwt_secret_key.txt`，重启服务（会使所有已签发的 JWT 失效）
 

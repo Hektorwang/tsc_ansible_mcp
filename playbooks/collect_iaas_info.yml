@@ -1,8 +1,7 @@
 # @meta: {
 #   "description": "Collect IaaS layer infrastructure information including CPU, memory, storage (RAID), OS, and package manager details",
 #   "author": "tsc",
-#   "version": "1.1.1",
-#   "tags": ["iaas", "infrastructure", "info", "hardware"],
+#   "tags": ["iaas", "infrastructure", "info", "hardware", "系统基本信息"],
 #   "parameters": [
 #     {
 #       "name": "runtime",
@@ -42,14 +41,16 @@
 
   tasks:
     - name: Collect IaaS information
-      ansible.builtin.shell: |
-        source /home/tsc/tsc_profile
-        {% if runtime %}
-        tsc --tsc_iaas_info --runtime | jq . -rc
-        {% else %}
-        tsc --tsc_iaas_info | jq . -rc
-        {% endif %}
-      args:
+      ansible.builtin.shell:
+        cmd: |-
+          set -e
+          set -o pipefail
+          source /home/tsc/tsc_profile
+          {% if runtime %}
+          tsc --tsc_iaas_info --runtime | jq . -rc
+          {% else %}
+          tsc --tsc_iaas_info | jq . -rc
+          {% endif %}
         executable: /bin/bash
       register: iaas_info
       changed_when: false

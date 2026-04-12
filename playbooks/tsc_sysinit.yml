@@ -1,0 +1,56 @@
+# @meta: {
+#   "description": "System Initialization Configuration",
+#   "author": "tsc",
+#   "tags": ["iaas", "system", "initialization", "初始化", "标准化", "操作系统", "参数调优"],
+#   "parameters": [
+#     {
+#       "name": "ntp_server",
+#       "type": "str",
+#       "required": false,
+#       "description": "ntpd server ip. Optional, do not pass if not needed."
+#     }
+#   ],
+#   "use_cases": [
+#     "Configuare system to a standard initialization status",
+#     "Including SELinux, Firewall, Timezone, Systemd services, Sshd service, system_parameter, and fhmv",
+#     "You can specify ntp server"
+#   ],
+#   "Success on": "rc=0",
+#   "example": {
+#     "playbook": "tsc_sysinit.yml",
+#     "targets": ["192.168.1.10"],
+#     "extravars": {
+#       "ntp_server": "192.168.1.100"
+#     },
+#     "user": "root",
+#     "password": "your_password"
+#   },
+#   "notes": [
+#     "Requires tsc_tools to be installed on target hosts",
+#     "Source profile: /home/tsc/tsc_profile",
+#     "Execute command if given ntp server: tsc --tsc_sysinit --all --ntp_server 192.168.1.100",
+#     "Execute command if no extravars given: tsc --tsc_sysinit --all",
+#     "IMPORTANT: Do NOT pass default values in extravars. Only pass parameters when user explicitly specifies them."
+#   ]
+# }
+---
+- name: System Initialization Configuration
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Collect IaaS information
+      ansible.builtin.shell:
+        cmd: |-
+          set -o pipefail
+          set -e
+          source /home/tsc/tsc_profile
+          tsc --tsc_sysinit --all{% if ntp_server is defined and ntp_server %} --ntp_server={{ ntp_server }}{% endif %} >/dev/null
+        executable: /bin/bash
+      register: result
+      changed_when: false
+      failed_when: result.rc != 0
+
+    - name: Display IaaS information
+      ansible.builtin.debug:
+        msg: '{{ result.stdout }}'
