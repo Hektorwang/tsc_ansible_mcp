@@ -149,7 +149,9 @@ class TaskRepository:
         cutoff_time = datetime.now().timestamp() - expiry_seconds
         cutoff_datetime = datetime.fromtimestamp(cutoff_time)
         with self.db.get_session() as session:
-            count = session.query(Task).filter(Task.created_at < cutoff_datetime).delete()
+            count = (
+                session.query(Task).filter(Task.created_at < cutoff_datetime).delete()
+            )
         logger.info(f"清理过期任务: 删除 {count} 条记录")
         return count
 
@@ -157,7 +159,9 @@ class TaskRepository:
         from sqlalchemy import func
 
         with self.db.get_session() as session:
-            total = session.query(func.count(Task.id)).scalar() or 0  # pylint: disable=not-callable
+            total = (
+                session.query(func.count(Task.id)).scalar() or 0
+            )  # pylint: disable=not-callable
             pending = (
                 session.query(func.count(Task.id))  # pylint: disable=not-callable
                 .filter(Task.status == "pending")

@@ -1,5 +1,121 @@
 # Release Notes
 
+## Version=1.11.0
+
+2026-04-14
+
+### Bug 修复
+
+#### 1. 主机锁管理问题修复
+
+修复了主机锁未正确释放导致的死锁问题，确保所有执行方法都能正确管理主机锁。
+
+**问题原因：**
+- `ansible_shell`、`ansible_copy` 和 `ansible_fetch` 方法缺少锁管理逻辑
+- 当这些方法执行时，主机锁被获取但未在所有情况下释放
+- 导致主机被永久锁定，无法执行后续操作
+
+**修复内容：**
+
+为所有执行方法添加了完整的锁管理逻辑：
+
+- `ansible_shell()` - 添加锁的获取和释放逻辑
+- `ansible_copy()` - 添加锁的获取和释放逻辑
+- `ansible_fetch()` - 添加锁的获取和释放逻辑
+- 所有方法都使用 try-finally 块确保锁在任何情况下都会被释放
+- 在调用 `install_python` 时设置 `skip_lock=True`，避免死锁
+
+#### 2. 锁管理日志增强
+
+增加了详细的锁管理日志，便于诊断和解决锁相关的问题。
+
+**修复内容：**
+- 在 `_acquire_hosts` 方法中增加了详细的日志，包括尝试获取锁、获取成功和失败的情况
+- 在 `_release_hosts` 方法中增加了详细的日志，包括尝试释放锁、释放成功和跳过的情况
+- 将一些 debug 级别的日志提升为 info 级别，以便在正常日志中也能看到锁的操作情况
+
+#### 3. localhost 连接问题修复
+
+修复了 localhost 连接被拒绝的问题，为 localhost 添加了特殊处理逻辑。
+
+**问题原因：**
+- 当目标主机是 localhost 时，代码仍然尝试通过 SSH 连接到 localhost:22
+- 导致出现 "Connection refused" 错误
+
+**修复内容：**
+- 修改了 `_build_inventory` 方法，为 localhost 添加了特殊处理逻辑
+- 当目标是 "localhost" 时，使用 `ansible_connection: local` 而不是 SSH 连接
+- 为 localhost 设置了默认的 Python 解释器路径 `/usr/bin/python3`
+
+#### 4. Python 安装状态返回值修复
+
+修复了 `install_python` 方法中 `installed` 字段的返回值问题。
+
+**问题原因：**
+- 当 tsc_python 已经安装时，`install_python` 方法返回的 `installed` 字段为 False
+- 导致 LLM 认为 Python 未安装，重复尝试安装
+
+**修复内容：**
+- 修改了 `install_python` 方法中的逻辑，当 tsc_python 已经安装时，返回的 `installed` 字段为 True
+- 确保 LLM 能够正确理解 Python 安装状态
+
+### 改进
+
+#### 1. 响应日志增强
+
+为所有 MCP 工具添加了响应日志，以便更好地跟踪服务是否正确返回了响应。
+
+**改进内容：**
+- `ansible_shell.py` - 添加了响应日志，记录执行结果
+- `ansible_copy.py` - 添加了响应日志，记录文件分发结果
+- `ansible_fetch.py` - 添加了响应日志，记录文件获取结果
+- `ansible_playbook.py` - 添加了响应日志，记录 playbook 执行结果
+- `check_host_status.py` - 添加了响应日志，记录主机状态检查结果
+- `install_python.py` - 添加了响应日志，记录 Python 安装结果
+- `install_tsc_tools.py` - 添加了响应日志，记录 tsc_tools 安装结果
+
+#### 2. SSH 配置优化
+
+优化了 SSH 配置，确保当使用密码认证时，Ansible 会直接使用密码而不尝试公钥认证。
+
+**改进内容：**
+- 确保 `PubkeyAuthentication=no` 参数被正确包含在 SSH 命令中
+- 避免因公钥认证失败导致的连接延迟
+- 提高 SSH 连接的可靠性
+
+### 技术实现
+
+#### 锁管理机制
+
+所有执行方法现在都使用统一的锁管理机制：
+
+1. **获取锁** - 执行前尝试获取主机锁
+2. **执行操作** - 获取锁成功后执行相应的操作
+3. **释放锁** - 使用 try-finally 块确保锁在任何情况下都会被释放
+4. **死锁避免** - 在调用子方法时设置 `skip_lock=True`，避免死锁
+
+#### 日志记录
+
+增强的锁管理日志格式：
+
+```
+2026-04-14 02:30:00 | INFO     | [LOCK] Attempting to acquire locks for hosts: ['192.168.19.35']
+2026-04-14 02:30:00 | INFO     | [LOCK] Acquired lock for host: 192.168.19.35
+2026-04-14 02:30:00 | INFO     | [LOCK] _acquire_hosts SUCCESS: hosts=['192.168.19.35'], new_active=['192.168.19.35']
+...
+2026-04-14 02:30:05 | INFO     | [LOCK] Attempting to release locks for hosts: ['192.168.19.35']
+2026-04-14 02:30:05 | INFO     | [LOCK] Released host lock: 192.168.19.35
+2026-04-14 02:30:05 | INFO     | [LOCK] _release_hosts done: released=['192.168.19.35'], skipped=[], remaining_active=[]
+```
+
+### 文档更新
+
+- 更新 `README.md` - 添加 v1.11.0 功能说明
+- 更新 `docs/SPEC.md` - 添加锁管理和 localhost 连接处理说明
+- 更新 `docs/ARCHITECTURE.md` - 添加锁管理机制说明
+
+---
+
 ## Version=1.10.0
 
 2026-04-12

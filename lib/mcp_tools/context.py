@@ -14,6 +14,7 @@ logger = get_logger()
 
 def register_context_tools(server):
     """注册上下文相关工具"""
+
     @server.mcp.tool(
         name="set_context",
         description="设置上下文键值对。用于在会话间持久化存储数据，例如保存配置、状态信息等。",

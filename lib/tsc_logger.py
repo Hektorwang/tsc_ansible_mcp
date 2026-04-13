@@ -13,7 +13,9 @@ import json
 class TscLogger:
     """TSC 日志管理类"""
 
-    def __init__(self, log_dir: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self, log_dir: Optional[str] = None, config: Optional[Dict[str, Any]] = None
+    ):
         self.log_dir = Path(log_dir) if log_dir else Path("./logs")
         self.log_dir.mkdir(exist_ok=True)
         self.config = config or {}
@@ -25,20 +27,22 @@ class TscLogger:
         # 移除所有处理器
         logger.remove()
         self._logger_handlers = []
-        
+
         # 从配置获取日志级别
         log_level = self.config.get("logging.level", "INFO")
-        
+
         # 从配置获取日志文件配置
         app_log_file = self.log_dir / "tsc_ansible_mcp.log"
-        ansible_log_file = self.log_dir / self.config.get("logging.ansible_execution_log", "ansible_execution.log")
+        ansible_log_file = self.log_dir / self.config.get(
+            "logging.ansible_execution_log", "ansible_execution.log"
+        )
         rotation = self.config.get("logging.ansible_execution_rotation", "50 MB")
         retention = self.config.get("logging.ansible_execution_retention", "30 days")
-        
+
         # 标准化日志格式
         file_format = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}"
         console_format = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}"
-        
+
         # 添加应用日志文件处理器
         app_handler = logger.add(
             app_log_file,
@@ -46,10 +50,10 @@ class TscLogger:
             retention=retention,
             compression="zip",
             level=log_level,
-            format=file_format
+            format=file_format,
         )
         self._logger_handlers.append(app_handler)
-        
+
         # 添加 Ansible 执行日志文件处理器
         ansible_handler = logger.add(
             ansible_log_file,
@@ -57,16 +61,12 @@ class TscLogger:
             retention=retention,
             compression="zip",
             level=log_level,
-            format=file_format
+            format=file_format,
         )
         self._logger_handlers.append(ansible_handler)
-        
+
         # 添加控制台处理器
-        console_handler = logger.add(
-            sink=print,
-            level=log_level,
-            format=console_format
-        )
+        console_handler = logger.add(sink=print, level=log_level, format=console_format)
         self._logger_handlers.append(console_handler)
 
     def update_config(self, config: Dict[str, Any]):
@@ -86,7 +86,9 @@ class TscLogger:
 
     def log_task_start(self, task_id: str, task_type: str, **context):
         """记录任务开始"""
-        self.log_with_context("INFO", f"任务开始: {task_type}", task_id=task_id, **context)
+        self.log_with_context(
+            "INFO", f"任务开始: {task_type}", task_id=task_id, **context
+        )
 
     def log_task_end(self, task_id: str, status: str, **context):
         """记录任务结束"""
@@ -98,7 +100,9 @@ class TscLogger:
 
     def log_performance(self, operation: str, duration: float, **context):
         """记录性能信息"""
-        self.log_with_context("INFO", f"性能指标: {operation} 耗时 {duration:.2f}s", **context)
+        self.log_with_context(
+            "INFO", f"性能指标: {operation} 耗时 {duration:.2f}s", **context
+        )
 
 
 # 全局日志实例

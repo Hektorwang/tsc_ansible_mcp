@@ -4,7 +4,7 @@
 
 ### 1.1 Runtime Environment
 
-- **Python Version**: `3.13`. A virtual environment is provided at the project root: `.venv`.
+- **Python Version**: `3.13`. A virtual environment is provided at the project root: `.venv`(use `source .venv/bin/activate` to active it.).
 - **Local Bash**: Version `5` or higher.
 - **Target Host Bash**: Version `4` or higher.
 
@@ -55,6 +55,7 @@
 - **MCP Tools**: All tool definitions must include explicit **English** `instructions` detailing preconditions, inputs, and expected outputs.
 - **Security & Safety**: Avoid `eval()` in Python and Shell. If absolutely necessary, **must request manual human confirmation** before execution.
 - **WebSockets**: Do not consider WebSockets unless bidirectional interaction is strictly required.
+- **LOG**: Prefer more detailed logging (from debug to error levels). Whenever attempting to fix a bug, add additional logs directly within the malfunctioning code to aid diagnosis.
 
 ### 1.5 Code Formatting & Validation
 
@@ -300,17 +301,18 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 
 ## 9. 依赖版本规格
 
-| 依赖           | 版本要求  |
-| -------------- | --------- |
-| Python         | >= 3.13   |
-| ansible-core   | >= 2.15.0 |
-| ansible-runner | >= 2.3.0  |
-| Flask          | >= 3.0.0  |
-| Flask-RESTful  | >= 0.3.10 |
-| pandas         | >= 2.0.0  |
-| SQLAlchemy     | >= 2.0.0  |
-| loguru         | >= 0.7.0  |
-| watchdog       | >= 3.0.0  |
+| 依赖           | 版本要求   |
+| -------------- | ---------- |
+| Python         | >= 3.13    |
+| ansible-core   | >= 2.15.0  |
+| ansible-runner | >= 2.3.0   |
+| FastAPI        | >= 0.100.0 |
+| FastMCP        | >= 0.1.0   |
+| SQLAlchemy     | >= 2.0.0   |
+| PyJWT          | >= 2.8.0   |
+| pydantic       | >= 2.0.0   |
+| loguru         | >= 0.7.0   |
+| watchdog       | >= 3.0.0   |
 
 ## 10. 动态 Playbook 工具生成机制
 
@@ -506,7 +508,6 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
       "issued_at": "2026-04-07T10:00:00Z",
       "expires_at": null,
       "description": "管理员 Token",
-      "revoked": false,
       "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
     }
   ]
@@ -522,7 +523,6 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 - `issued_at`: 签发时间
 - `expires_at`: 过期时间（null 表示永久有效）
 - `description`: JWT 描述
-- `revoked`: 是否已撤销
 - `token`: JWT token 字符串（v1.7.0 新增）
 
 ### 12.6 JWT 生成器
@@ -567,7 +567,83 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 sshpass -vp JScz-320400 ssh root@192.168.19.35 -p 3204 -o 'PreferredAuthentications=password' -o 'PubkeyAuthentication=no'
 ```
 
-## 14. 相关文档
+## 14. 锁管理机制
+
+### 14.1 锁管理概述
+
+为了避免多个操作同时执行导致的冲突，系统实现了主机级别的锁管理机制。
+
+### 14.2 核心组件
+
+| 组件 | 文件 | 功能 |
+| ---- | ---- | ---- |
+| 锁管理 | `lib/executor.py` | 实现主机锁的获取和释放 |
+| 锁存储 | `_active_hosts` | 存储当前活跃的主机列表 |
+| 锁操作 | `_acquire_hosts`, `_release_hosts` | 实现锁的获取和释放逻辑 |
+
+### 14.3 锁管理流程
+
+1. **获取锁** - 执行前尝试获取主机锁
+2. **执行操作** - 获取锁成功后执行相应的操作
+3. **释放锁** - 使用 try-finally 块确保锁在任何情况下都会被释放
+4. **死锁避免** - 在调用子方法时设置 `skip_lock=True`，避免死锁
+
+### 14.4 锁管理日志
+
+增强的锁管理日志格式：
+
+```
+2026-04-14 02:30:00 | INFO     | [LOCK] Attempting to acquire locks for hosts: ['192.168.19.35']
+2026-04-14 02:30:00 | INFO     | [LOCK] Acquired lock for host: 192.168.19.35
+2026-04-14 02:30:00 | INFO     | [LOCK] _acquire_hosts SUCCESS: hosts=['192.168.19.35'], new_active=['192.168.19.35']
+...
+2026-04-14 02:30:05 | INFO     | [LOCK] Attempting to release locks for hosts: ['192.168.19.35']
+2026-04-14 02:30:05 | INFO     | [LOCK] Released host lock: 192.168.19.35
+2026-04-14 02:30:05 | INFO     | [LOCK] _release_hosts done: released=['192.168.19.35'], skipped=[], remaining_active=[]
+```
+
+### 14.5 锁管理实现
+
+所有执行方法现在都使用统一的锁管理机制：
+
+- `ansible_shell()` - 添加锁的获取和释放逻辑
+- `ansible_copy()` - 添加锁的获取和释放逻辑
+- `ansible_fetch()` - 添加锁的获取和释放逻辑
+- `run_playbook()` - 已有的锁管理逻辑
+
+## 15. localhost 连接处理
+
+### 15.1 问题描述
+
+当目标主机是 localhost 时，代码仍然尝试通过 SSH 连接到 localhost:22，导致出现 "Connection refused" 错误。
+
+### 15.2 解决方案
+
+修改了 `_build_inventory` 方法，为 localhost 添加了特殊处理逻辑：
+
+- 当目标是 "localhost" 时，使用 `ansible_connection: local` 而不是 SSH 连接
+- 为 localhost 设置了默认的 Python 解释器路径 `/usr/bin/python3`
+
+### 15.3 实现细节
+
+```python
+if target == "localhost":
+    # 特殊处理 localhost，使用 local 连接方式
+    host_data = {
+        "ansible_host": "localhost",
+        "ansible_connection": "local",
+        "ansible_python_interpreter": "/usr/bin/python3",
+    }
+else:
+    # 普通主机的处理逻辑
+    host_data = {
+        "ansible_host": target,
+        "ansible_ssh_common_args": self.config.ssh_base_args,
+        "ansible_python_interpreter": python_path,
+    }
+```
+
+## 16. 相关文档
 
 - [PRD 文档](./PRD.md)
 - [架构设计文档](./ARCHITECTURE.md)

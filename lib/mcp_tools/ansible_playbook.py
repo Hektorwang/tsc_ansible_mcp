@@ -15,6 +15,7 @@ logger = get_logger()
 
 def register_ansible_playbook(server):
     """注册ansible_playbook工具"""
+
     @server.mcp.tool(
         name="ansible_playbook",
         description="""
@@ -86,4 +87,8 @@ def register_ansible_playbook(server):
         server.task_repo.create(
             task_id, "ansible_playbook", {"playbook": playbook, "targets": targets}
         )
-        return server.execution_service.execute_playbook(playbook, targets, credentials, extravars, timeout, task_id)
+        result = server.execution_service.execute_playbook(
+            playbook, targets, credentials, extravars, timeout, task_id
+        )
+        logger.info(f"MCP 工具响应: ansible_playbook, task_id={task_id}, result={result}")
+        return result

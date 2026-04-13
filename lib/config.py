@@ -10,10 +10,14 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from lib.tsc_logger import get_logger
+
 try:
     import tomllib
 except ImportError:
     import tomli as tomllib
+
+logger = get_logger()
 
 
 class Config:
@@ -48,23 +52,21 @@ class Config:
         default_timeout = self.get("mcp.default_timeout", 600)
         max_timeout = self.get("mcp.max_timeout", 3600)
         if default_timeout > max_timeout:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"默认超时值 ({default_timeout}) 大于最大超时值 ({max_timeout})，将使用最大超时值")
-        
+            logger.warning(
+                f"默认超时值 ({default_timeout}) 大于最大超时值 ({max_timeout})，将使用最大超时值"
+            )
+
         # 验证执行设置
         forks = self.get("execution.forks", 10)
         if forks < 1 or forks > 100:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"forks 值 ({forks}) 不在合理范围内 (1-100)，将使用默认值 10")
-        
+            logger.warning(
+                f"forks 值 ({forks}) 不在合理范围内 (1-100)，将使用默认值 10"
+            )
+
         # 验证日志级别
         log_level = self.get("logging.level", "INFO").upper()
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if log_level not in valid_levels:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.warning(f"日志级别 ({log_level}) 无效，将使用默认值 INFO")
 
     def _load(self) -> Dict[str, Any]:
@@ -131,6 +133,10 @@ class Config:
             },
             "playbooks": {
                 "path": "playbooks",
+            },
+            "ssh": {
+                "base_args": "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ForwardX11=no -o GSSAPIAuthentication=no -o VerifyHostKeyDNS=no -o ConnectTimeout=30 -o ControlMaster=no -o ControlPath=none -o ControlPersist=0",
+                "password_args": "-o PreferredAuthentications=password -o PubkeyAuthentication=no -o publickey=no",
             },
             "logging": {
                 "dir": "logs",
@@ -279,6 +285,18 @@ class Config:
         base_dir = Path(__file__).parent.parent.resolve()
         return base_dir / self.playbooks_settings.get("path", "playbooks")
 
+    @property
+    def ssh_settings(self) -> Dict[str, Any]:
+        return self.get("ssh", {})
+
+    @property
+    def ssh_base_args(self) -> str:
+        return self.ssh_settings.get("base_args", "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ForwardX11=no -o GSSAPIAuthentication=no -o VerifyHostKeyDNS=no")
+
+    @property
+    def ssh_password_args(self) -> str:
+        return self.ssh_settings.get("password_args", "-o PreferredAuthentications=password -o PubkeyAuthentication=no")
+
     def _get_cache_path(self) -> Path:
         base_dir = Path(__file__).parent.parent.resolve()
         logs_dir = base_dir / "logs"
@@ -377,9 +395,6 @@ class Config:
         if key in self._package_cache.get("tsc_python", {}):
             return self._package_cache["tsc_python"][key]["url"]
 
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.warning(f"缓存中未找到 {key}，使用默认 URL")
         logger.warning(
             f"可用的缓存键: {list(self._package_cache.get('tsc_python', {}).keys())}"
@@ -410,7 +425,7 @@ class Config:
 
     def is_high_risk_command(self, command: str) -> bool:
         """检查命令是否为高危命令
-        
+
         增强的高危命令检查，支持：
         1. 检测完整路径（如 /usr/bin/rm）
         2. 检测命令参数中的高危操作
@@ -418,38 +433,52 @@ class Config:
         4. 检测常见的绕过技巧
         """
         command_lower = command.strip().lower()
-        
+
         # 常见的高危命令列表
         high_risk_cmds = [
-            "rm", "unlink", "halt", "shutdown", "mkfs", "parted", 
-            "reboot", "poweroff", "init", "dd", "format", "shred"
+            "rm",
+            "unlink",
+            "halt",
+            "shutdown",
+            "mkfs",
+            "parted",
+            "reboot",
+            "poweroff",
+            "init",
+            "dd",
+            "format",
+            "shred",
         ]
-        
+
         # 从配置中获取高危命令列表
         config_risk_cmds = self.high_risk_commands
         if config_risk_cmds:
             high_risk_cmds.extend(config_risk_cmds)
-        
+
         # 检查命令是否包含高危命令
         for risk_cmd in high_risk_cmds:
             # 检查完整路径（如 /usr/bin/rm）
             if f"/{risk_cmd}" in command_lower:
                 return True
-            
+
             # 检查命令部分（如 rm）
             cmd_parts = command_lower.split()
             if risk_cmd in cmd_parts:
                 return True
-            
+
             # 检查管道和重定向中的命令
             if "|" in command_lower or ">" in command_lower or "<" in command_lower:
                 # 分割命令并检查每个部分
-                parts = command_lower.split("|") + command_lower.split(">") + command_lower.split("<")
+                parts = (
+                    command_lower.split("|")
+                    + command_lower.split(">")
+                    + command_lower.split("<")
+                )
                 for part in parts:
                     part_parts = part.strip().split()
                     if risk_cmd in part_parts:
                         return True
-        
+
         return False
 
     @property
@@ -493,55 +522,3 @@ class Config:
     @property
     def result_store_dir(self) -> str:
         return self.execution_settings.get("result_store_dir", "logs/task_results")
-
-    class TimeoutConfig:
-        """超时配置类"""
-
-        def __init__(self, config):
-            self.config = config
-
-        @property
-        def default_timeout(self) -> int:
-            """默认执行超时"""
-            return self.config.get("mcp.default_timeout", 600)
-
-        @property
-        def max_timeout(self) -> int:
-            """最大允许超时"""
-            return self.config.get("mcp.max_timeout", 3600)
-
-        @property
-        def task_timeout(self) -> int:
-            """Ansible 任务超时"""
-            return self.config.get("execution.timeout", 600)
-
-        @property
-        def connection_timeout(self) -> int:
-            """SSH 连接超时"""
-            return self.config.get("execution.connection_timeout", 30)
-
-        def get_timeout(self, timeout_type: str, requested_timeout: Optional[int] = None) -> int:
-            """获取超时值
-
-            Args:
-                timeout_type: 超时类型 (default, task, connection)
-                requested_timeout: 请求的超时值
-
-            Returns:
-                计算后的超时值
-            """
-            if requested_timeout is not None:
-                # 确保不超过最大超时
-                return min(requested_timeout, self.max_timeout)
-
-            timeout_map = {
-                "default": self.default_timeout,
-                "task": self.task_timeout,
-                "connection": self.connection_timeout
-            }
-            return timeout_map.get(timeout_type, self.default_timeout)
-
-    @property
-    def timeout_config(self) -> TimeoutConfig:
-        """超时配置"""
-        return self.TimeoutConfig(self)

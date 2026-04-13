@@ -14,6 +14,7 @@ logger = get_logger()
 
 def register_task_results_tools(server):
     """注册任务结果相关工具"""
+
     @server.mcp.tool(
         name="get_task_detail",
         description="查询特定主机在指定任务中的执行详情。当执行结果返回摘要信息时，使用此工具获取特定主机的详细执行结果。",
@@ -23,10 +24,8 @@ def register_task_results_tools(server):
         task_id: str,
         host: str,
     ) -> Dict[str, Any]:
-        
-        logger.info(
-            f"MCP 工具调用: get_task_detail, task_id={task_id}, host={host}"
-        )
+
+        logger.info(f"MCP 工具调用: get_task_detail, task_id={task_id}, host={host}")
         from lib.task_result_store import task_result_store
 
         result = task_result_store.get_host_result(task_id, host)
@@ -55,7 +54,7 @@ def register_task_results_tools(server):
         limit: int = 20,
         offset: int = 0,
     ) -> Dict[str, Any]:
-        
+
         logger.info(f"MCP 工具调用: get_failed_hosts, task_id={task_id}")
         from lib.task_result_store import task_result_store
 
@@ -71,7 +70,7 @@ def register_task_results_tools(server):
         limit: int = 20,
         offset: int = 0,
     ) -> Dict[str, Any]:
-        
+
         logger.info(f"MCP 工具调用: get_all_results, task_id={task_id}")
         from lib.task_result_store import task_result_store
 

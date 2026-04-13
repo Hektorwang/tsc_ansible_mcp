@@ -14,6 +14,7 @@ logger = get_logger()
 
 def register_list_playbooks(server):
     """注册list_playbooks工具"""
+
     @server.mcp.tool(
         name="list_playbooks",
         description="""

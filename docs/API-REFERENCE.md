@@ -4,7 +4,7 @@
 
 ### 1.1 基础信息
 
-- **Base URL**: `http://localhost:8000/api/v1`
+- **Base URL**: `http://localhost:8500/api/v1`
 - **协议**: HTTP/HTTPS
 - **数据格式**: JSON
 - **字符编码**: UTF-8
@@ -166,7 +166,7 @@ Content-Type: application/json
 
 
 
-### 2.5 Ansible Shell 命令
+### 2.4 Ansible Shell 命令
 
 执行远程 Shell 命令(仅支持 ad-hoc 模式)。
 
@@ -228,7 +228,7 @@ Content-Type: application/json
 }
 ```
 
-### 2.6 Ansible Copy 模块
+### 2.5 Ansible Copy 模块
 
 调用 ansible copy 模块，将本地文件复制到远程主机。
 
@@ -286,7 +286,7 @@ Content-Type: application/json
 }
 ```
 
-### 2.7 Ansible Fetch 模块
+### 2.6 Ansible Fetch 模块
 
 调用 ansible fetch 模块，从远程主机获取文件到本地。
 
@@ -340,7 +340,7 @@ Content-Type: application/json
 }
 ```
 
-### 2.8 列出 Playbook
+### 2.7 列出 Playbook
 
 列出 playbooks 目录下所有可用的 playbook 文件。
 
@@ -366,7 +366,7 @@ GET /api/v1/playbooks
 }
 ```
 
-### 2.9 执行 Playbook
+### 2.8 执行 Playbook
 
 执行指定的 playbook 文件。
 
@@ -643,74 +643,6 @@ GET /health
 }
 ```
 
-### 2.18 获取配置
-
-获取当前服务配置。
-
-**请求**:
-
-```http
-GET /api/v1/config
-Content-Type: application/json
-Authorization: Bearer <token>
-```
-
-**响应示例**:
-
-```json
-{
-  "status": "success",
-  "data": {
-    "mcp": {
-      "port": 8500,
-      "host": "0.0.0.0"
-    },
-    "logging": {
-      "level": "INFO"
-    }
-  }
-}
-```
-
-### 2.19 更新配置
-
-更新服务配置（需要管理员权限）。
-
-**请求**:
-
-```http
-PUT /api/v1/config
-Content-Type: application/json
-Authorization: Bearer <token>
-```
-
-**请求参数**:
-
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| mcp | object | 否 | MCP 配置 |
-| logging | object | 否 | 日志配置 |
-| execution | object | 否 | 执行配置 |
-
-**请求示例**:
-
-```json
-{
-  "logging": {
-    "level": "DEBUG"
-  }
-}
-```
-
-**响应示例**:
-
-```json
-{
-  "status": "success",
-  "message": "配置更新成功"
-}
-```
-
 ## 3. MCP 工具接口
 
 MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 REST API 接口说明。
@@ -733,6 +665,68 @@ MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 RE
 | `delete_context`     | 删除指定的上下文键值对                         | -             |
 | `list_contexts`      | 列出所有上下文键值对                           | -             |
 | `clear_contexts`     | 清空所有上下文数据                             | -             |
+
+### 3.1 check_host_status
+
+检查目标主机状态。
+
+**参数：**
+- `targets` (required): 目标主机 IP 列表
+- `credentials` (optional): SSH 凭据信息
+
+### 3.2 install_tsc_tools
+
+在目标主机安装 tsc_tools 环境。
+
+**参数：**
+- `targets` (required): 目标主机 IP 列表
+- `credentials` (optional): SSH 凭据信息
+- `timeout` (optional): 超时时间（秒）
+- `task_id` (optional): 任务 ID
+
+### 3.3 install_python
+
+在目标主机安装 tsc_python 环境。
+
+**参数：**
+- `targets` (required): 目标主机 IP 列表
+- `credentials` (optional): SSH 凭据信息
+- `timeout` (optional): 超时时间（秒）
+- `task_id` (optional): 任务 ID
+
+### 3.4 ansible_shell
+
+执行远程 Shell 命令。
+
+**参数：**
+- `targets` (required): 目标主机 IP 列表
+- `command` (required): 命令内容
+- `credentials` (optional): SSH 凭据信息
+- `timeout` (optional): 超时时间（秒）
+
+### 3.5 ansible_copy
+
+分发文件到远程主机。
+
+**参数：**
+- `targets` (required): 目标主机 IP 列表
+- `src` (required): 本地源文件路径
+- `dest` (required): 远程目标路径
+- `credentials` (optional): SSH 凭据信息
+- `mode` (optional): 文件权限
+- `owner` (optional): 文件所有者
+- `group` (optional): 文件所属组
+
+### 3.6 ansible_fetch
+
+从远程主机获取文件。
+
+**参数：**
+- `targets` (required): 目标主机 IP 列表
+- `src` (required): 远程源文件路径
+- `dest` (required): 本地目标目录
+- `credentials` (optional): SSH 凭据信息
+- `flat` (optional): 是否扁平化目录结构（默认 false）
 
 ## 4. 错误码说明
 

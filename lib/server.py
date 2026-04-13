@@ -12,29 +12,37 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastmcp import FastMCP
-from pydantic import BaseModel, Field
 
 from lib.auth import AuthMiddleware
 from lib.config import Config
-from lib.context_vars import get_current_role, set_current_user
 from lib.database import ContextRepository, Database, TaskRepository
-from lib.error_handler import error_handler, ErrorHandler
+from lib.error_handler import error_handler
 from lib.execution_service import ExecutionService
 from lib.executor import Executor
 from lib.inventory_manager import InventoryManager
 from lib.tsc_logger import get_logger
 from lib.mcp_tools import register_mcp_tools
-from lib.permission import check_tool_permission, require_permission
+from lib.permission import require_permission
 from lib.playbook_scanner import PlaybookScanner
 
 logger = get_logger()
 
 
 from lib.models import (
-    CredentialsModel, ShellRequest, CopyRequest, FetchRequest, PlaybookRequest,
-    HostRequest, InstallPythonRequest, InstallTscToolsRequest, AddInventoryRequest,
-    TaskResponse, ErrorResponse, SetContextRequest, GetContextRequest,
-    DeleteContextRequest, GetTaskDetailRequest, GetFailedHostsRequest, GetAllResultsRequest
+    CredentialsModel,
+    ShellRequest,
+    CopyRequest,
+    FetchRequest,
+    PlaybookRequest,
+    HostRequest,
+    InstallPythonRequest,
+    InstallTscToolsRequest,
+    AddInventoryRequest,
+    TaskResponse,
+    ErrorResponse,
+    SetContextRequest,
+    GetContextRequest,
+    DeleteContextRequest,
 )
 
 
@@ -107,6 +115,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         Server._auth_instance = self.auth
         # 更新日志配置
         from lib.tsc_logger import tsc_logger
+
         tsc_logger.update_config(self.config._data)
         self.playbook_scanner = PlaybookScanner(self.config)
         self.mcp = FastMCP(
@@ -127,7 +136,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         """注册MCP工具"""
         register_mcp_tools(self)
 
-
     def _register_dynamic_playbook_tools(self) -> None:
         """动态注册 playbook 工具"""
         self.playbook_scanner.scan_playbooks()
@@ -147,10 +155,8 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     extravars: Optional[Union[Dict[str, Any], str]] = None,
                     timeout: Optional[int] = None,
                 ) -> Dict[str, Any]:
-                    
-                    logger.info(
-                        f"MCP 工具调用: {tool_name}, targets={targets}"
-                    )
+
+                    logger.info(f"MCP 工具调用: {tool_name}, targets={targets}")
                     parsed_extravars: Optional[Dict[str, Any]] = None
                     if extravars is not None:
                         if isinstance(extravars, str):
@@ -171,7 +177,14 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                         credentials["private_key"] = private_key
                     task_id = str(uuid.uuid4())
                     self.task_repo.create(task_id, playbook_name, {"targets": targets})
-                    return self.execution_service.execute_playbook(playbook_name, targets, credentials, parsed_extravars, timeout, task_id)
+                    return self.execution_service.execute_playbook(
+                        playbook_name,
+                        targets,
+                        credentials,
+                        parsed_extravars,
+                        timeout,
+                        task_id,
+                    )
 
                 return playbook_tool
 
@@ -403,7 +416,12 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         async def list_playbooks(
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, Any]:
-            return self.executor.list_playbooks()
+            playbooks = self.playbook_scanner.scan_playbooks()
+            return {
+                "status": "success",
+                "playbooks": list(playbooks.values()),
+                "count": len(playbooks),
+            }
 
         @app.post("/api/v1/playbooks/execute", summary="执行 Playbook")
         @error_handler
@@ -475,51 +493,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         @app.get("/health", summary="健康检查")
         async def health_check() -> Dict[str, str]:
             return {"status": "healthy"}
-
-        @app.get("/api/v1/config", summary="获取配置")
-        async def get_config(
-            user_info: Dict[str, Any] = Depends(self.auth.verify_request),
-        ) -> Dict[str, Any]:
-            """获取当前配置"""
-            return {
-                "status": "success",
-                "data": self.config._data
-            }
-
-        @app.put("/api/v1/config", summary="更新配置")
-        async def update_config(
-            config_data: Dict[str, Any],
-            user_info: Dict[str, Any] = Depends(self.auth.verify_request),
-        ) -> Dict[str, Any]:
-            """更新配置（需要管理员权限）"""
-            # 检查权限
-            if user_info.get("role") != "admin":
-                raise HTTPException(status_code=403, detail="权限不足，需要管理员权限")
-            
-            # 更新配置
-            try:
-                # 合并配置数据
-                for key, value in config_data.items():
-                    if isinstance(value, dict) and key in self.config._data:
-                        self.config._data[key].update(value)
-                    else:
-                        self.config._data[key] = value
-                
-                # 保存配置到文件
-                with self.config.path.open("w", encoding="utf-8") as f:
-                    import toml
-                    toml.dump(self.config._data, f)
-                
-                # 重新验证配置
-                self.config._validate_config()
-                
-                return {
-                    "status": "success",
-                    "message": "配置更新成功"
-                }
-            except Exception as e:
-                logger.exception(f"更新配置失败: {e}")
-                raise HTTPException(status_code=500, detail=f"更新配置失败: {str(e)}")
 
         return app
 

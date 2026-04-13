@@ -15,6 +15,7 @@ logger = get_logger()
 
 def register_check_host_status(server):
     """注册check_host_status工具"""
+
     @server.mcp.tool(
         name="check_host_status",
         description="""
@@ -66,4 +67,8 @@ def register_check_host_status(server):
             credentials["private_key"] = private_key
         task_id = str(uuid.uuid4())
         server.task_repo.create(task_id, "check_host_status", {"targets": targets})
-        return server.execution_service.check_host_status(targets, credentials, timeout, task_id)
+        result = server.execution_service.check_host_status(
+            targets, credentials, timeout, task_id
+        )
+        logger.info(f"MCP 工具响应: check_host_status, task_id={task_id}, result={result}")
+        return result

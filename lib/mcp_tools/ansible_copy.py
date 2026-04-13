@@ -15,6 +15,7 @@ logger = get_logger()
 
 def register_ansible_copy(server):
     """注册ansible_copy工具"""
+
     @server.mcp.tool(
         name="ansible_copy",
         description="""
@@ -71,4 +72,8 @@ def register_ansible_copy(server):
         server.task_repo.create(
             task_id, "ansible_copy", {"targets": targets, "src": src, "dest": dest}
         )
-        return server.execution_service.ansible_copy(targets, src, dest, credentials, timeout, task_id)
+        result = server.execution_service.ansible_copy(
+            targets, src, dest, credentials, timeout, task_id
+        )
+        logger.info(f"MCP 工具响应: ansible_copy, task_id={task_id}, result={result}")
+        return result

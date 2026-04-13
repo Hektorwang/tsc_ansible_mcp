@@ -15,6 +15,7 @@ logger = get_logger()
 
 def register_install_python(server):
     """注册install_python工具"""
+
     @server.mcp.tool(
         name="install_python",
         description="""
@@ -69,4 +70,8 @@ def register_install_python(server):
             credentials["private_key"] = private_key
         task_id = str(uuid.uuid4())
         server.task_repo.create(task_id, "install_python", {"targets": targets})
-        return server.execution_service.install_python(targets, credentials, timeout, task_id)
+        result = server.execution_service.install_python(
+            targets, credentials, timeout, task_id
+        )
+        logger.info(f"MCP 工具响应: install_python, task_id={task_id}, result={result}")
+        return result

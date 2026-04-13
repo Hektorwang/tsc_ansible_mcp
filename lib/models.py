@@ -7,16 +7,16 @@
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, String, Text, DateTime, JSON
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 
-# SQLAlchemy 模型基类
 Base = declarative_base()
 
 
 class Task(Base):
     """任务模型"""
+
     __tablename__ = "tasks"
-    
+
     id = Column(String, primary_key=True, index=True)
     type = Column(String, nullable=False)
     parameters = Column(JSON, nullable=False)
@@ -28,8 +28,9 @@ class Task(Base):
 
 class Context(Base):
     """上下文模型"""
+
     __tablename__ = "contexts"
-    
+
     key = Column(String, primary_key=True, index=True)
     value = Column(Text, nullable=False)
     created_at = Column(DateTime, nullable=False)
@@ -44,14 +45,18 @@ class CredentialsModel(BaseModel):
 
 
 class ShellRequest(BaseModel):
-    targets: List[str] = Field(..., description="目标主机 IP 列表", min_length=1, max_length=100)
+    targets: List[str] = Field(
+        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+    )
     command: str = Field(..., description="命令内容", min_length=1, max_length=1000)
     credentials: Optional[CredentialsModel] = None
     timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
 
 
 class CopyRequest(BaseModel):
-    targets: List[str] = Field(..., description="目标主机 IP 列表", min_length=1, max_length=100)
+    targets: List[str] = Field(
+        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+    )
     src: str = Field(..., description="本地源文件路径", min_length=1, max_length=500)
     dest: str = Field(..., description="远程目标路径", min_length=1, max_length=500)
     credentials: Optional[CredentialsModel] = None
@@ -62,7 +67,9 @@ class CopyRequest(BaseModel):
 
 
 class FetchRequest(BaseModel):
-    targets: List[str] = Field(..., description="目标主机 IP 列表", min_length=1, max_length=100)
+    targets: List[str] = Field(
+        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+    )
     src: str = Field(..., description="远程源文件路径", min_length=1, max_length=500)
     dest: str = Field(..., description="本地目标目录", min_length=1, max_length=500)
     credentials: Optional[CredentialsModel] = None
@@ -71,21 +78,29 @@ class FetchRequest(BaseModel):
 
 
 class PlaybookRequest(BaseModel):
-    playbook: str = Field(..., description="playbook 文件名或路径", min_length=1, max_length=500)
-    targets: List[str] = Field(..., description="目标主机 IP 列表", min_length=1, max_length=100)
+    playbook: str = Field(
+        ..., description="playbook 文件名或路径", min_length=1, max_length=500
+    )
+    targets: List[str] = Field(
+        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+    )
     credentials: Optional[CredentialsModel] = None
     extravars: Optional[Dict[str, Any]] = None
     timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
 
 
 class HostRequest(BaseModel):
-    targets: List[str] = Field(..., description="目标主机 IP 列表", min_length=1, max_length=100)
+    targets: List[str] = Field(
+        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+    )
     credentials: Optional[CredentialsModel] = None
     timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
 
 
 class InstallPythonRequest(BaseModel):
-    targets: List[str] = Field(..., description="目标主机 IP 列表", min_length=1, max_length=100)
+    targets: List[str] = Field(
+        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+    )
     credentials: Optional[CredentialsModel] = None
     version: Optional[str] = Field(None, description="版本号")
     date: Optional[str] = Field(None, description="日期标识")
@@ -93,7 +108,9 @@ class InstallPythonRequest(BaseModel):
 
 
 class InstallTscToolsRequest(BaseModel):
-    targets: List[str] = Field(..., description="目标主机 IP 列表", min_length=1, max_length=100)
+    targets: List[str] = Field(
+        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+    )
     credentials: Optional[CredentialsModel] = None
     version: Optional[str] = Field(None, description="版本号")
     date: Optional[str] = Field(None, description="日期标识")

@@ -52,7 +52,7 @@ suse = "Suse"
 ubuntu = "Debian"
 
 [ansible]
-high_risk_commands = ["rm", "unlink", "halt", "shutdown", "mkfs", "parted", "reboot", "poweroff", "init", "dd", "format", "wipefs"]
+high_risk_commands = ["rm", "unlink", "halt", "shutdown", "mkfs", "parted", "reboot", "poweroff", "init", "dd", "format", "wipefs", "eval", "drop"]
 
 [execution]
 forks = 10
@@ -72,3 +72,8 @@ ansible_execution_retention = "30 days"
 ansible_execution_rotation = "50 MB"
 dir = "logs"
 level = "DEBUG"
+
+[ssh]
+base_args = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ForwardX11=no -o GSSAPIAuthentication=no -o VerifyHostKeyDNS=no -o ControlMaster=auto -o ControlPath=/tmp/ansible-ssh-%h-%p-%r -o ControlPersist=60 -o ConnectTimeout=30"
+password_args = "-o PreferredAuthentications=password -o PubkeyAuthentication=no"
+

@@ -23,27 +23,12 @@ def require_permission(tool_name: str):
     """
 
     def decorator(func: Callable) -> Callable:
+        from lib.server import Server
+
         @wraps(func)
         def wrapper(*args, **kwargs) -> Dict[str, Any]:
-            from lib.jwt_utils import JWTUtils
-
-            role = get_current_role()
-
-            # 如果没有设置用户上下文，拒绝访问
-            if not role:
-                logger.warning(f"工具调用失败: 未设置用户上下文, Tool={tool_name}")
-                return {
-                    "status": "error",
-                    "message": "Authentication required: user context not set",
-                }
-
-            # 获取 auth 实例（通过全局变量或参数传递）
-            # 这里假设 Server 实例会设置全局 auth
+            # 获取 auth 实例
             try:
-                from lib.server import Server
-
-                # 获取全局 auth 实例
-                # 注意：这需要在 Server 初始化时设置
                 if not hasattr(Server, "_auth_instance"):
                     logger.warning("Auth instance not initialized")
                     return {
@@ -52,6 +37,21 @@ def require_permission(tool_name: str):
                     }
 
                 auth = Server._auth_instance  # pylint: disable=no-member
+
+                # 认证未启用时放行所有工具
+                if not auth.enabled:
+                    logger.debug(f"认证未启用，放行工具调用: Tool={tool_name}")
+                    return func(*args, **kwargs)
+
+                role = get_current_role()
+
+                # 认证已启用但未设置用户上下文，拒绝访问
+                if not role:
+                    logger.warning(f"工具调用失败: 未设置用户上下文, Tool={tool_name}")
+                    return {
+                        "status": "error",
+                        "message": "Authentication required: user context not set",
+                    }
 
                 # 检查权限
                 if not auth.jwt_utils.check_permission(role, tool_name):
