@@ -156,7 +156,9 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                     timeout: Optional[int] = None,
                 ) -> Dict[str, Any]:
 
-                    logger.info(f"MCP 工具调用: {tool_name}, targets={targets}")
+                    logger.info(
+                        f"MCP 工具调用: playbook_{playbook_name}, targets={targets}"
+                    )
                     parsed_extravars: Optional[Dict[str, Any]] = None
                     if extravars is not None:
                         if isinstance(extravars, str):

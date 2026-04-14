@@ -845,9 +845,6 @@ python bin/generate_jwt.py --issue --sub user_002 --name "李四" --role user --
 # 列出已签发 JWT
 python bin/generate_jwt.py --list
 
-# 撤销 JWT
-python bin/generate_jwt.py --revoke jwt_001
-
 # 验证 JWT
 python bin/generate_jwt.py --verify <token>
 ```
@@ -887,7 +884,7 @@ sk-jwt-secret-key-2026
 **注意**：
 - `etc/jwt_secret_key.txt` 和 `etc/jwt_issued_tokens.json` 已添加到 `.gitignore`，不会被提交到 git
 - JWT 默认永久有效，签发时可选设置过期时间
-- 支持 JWT 撤销功能
+- 撤销 JWT：编辑 `etc/jwt_issued_tokens.json` 删除对应记录后重启服务即可
 
 ## 6. 响应格式说明
 

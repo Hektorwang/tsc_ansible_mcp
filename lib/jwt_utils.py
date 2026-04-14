@@ -158,6 +158,41 @@ class JWTUtils:
         )
         return token
 
+    def _is_token_in_issued_records(
+        self, token: str, payload: Dict[str, Any]
+    ) -> bool:
+        """Return True if this JWT is still allowed by jwt_issued_tokens.json.
+
+        Prefer matching the stored ``token`` string (v1.7.0+). If at least one
+        record stores tokens, the bearer must match a row, except legacy rows
+        with no ``token`` field where we allow the same ``sub`` as in the
+        record. Removing a row and restarting drops it from memory so
+        verification fails.
+        """
+        if not self.issued_tokens:
+            logger.warning("JWT 签发记录为空，拒绝验证")
+            return False
+
+        if any(r.get("token") == token for r in self.issued_tokens):
+            return True
+
+        has_stored_token = any(
+            isinstance(r.get("token"), str) and r.get("token") for r in self.issued_tokens
+        )
+        if not has_stored_token:
+            return True
+
+        sub = payload.get("sub")
+        if sub is not None and any(
+            not r.get("token") and r.get("sub") == sub for r in self.issued_tokens
+        ):
+            return True
+
+        logger.warning(
+            "JWT 签名有效但不在签发记录中，可能已从 jwt_issued_tokens.json 移除"
+        )
+        return False
+
     def verify_jwt(self, token: str) -> Optional[Dict[str, Any]]:
         """验证 JWT
 
@@ -170,6 +205,8 @@ class JWTUtils:
         logger.debug(f"开始验证JWT: token长度={len(token)}, token前缀={token[:30]}...")
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[JWT_ALGORITHM])
+            if not self._is_token_in_issued_records(token, payload):
+                return None
             logger.debug(
                 f"JWT验证成功: sub={payload.get('sub')}, name={payload.get('name')}, role={payload.get('role')}"
             )
