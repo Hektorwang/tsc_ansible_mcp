@@ -18,6 +18,7 @@
 - Any API interface must provide **Swagger** documentation.
 - Python `requests` usage must employ a persistent `Session` object.
 - **MCP** tools must include explicit English `instructions` in their definitions.
+- **LANGUAGE** Comments must use English.
 - Python YAML parsing must strictly use `yaml.safe_load()` or `yaml.safe_load_all()`.
 - Python code must use **Google-style Docstrings**.
 - JavaScript code must use **JSDoc**.
@@ -47,9 +48,8 @@
 - **Backend Frameworks**:
   - **Django**: Default choice for projects requiring a complex built-in **admin interface**, **authentication system**, and rapid CRUD development. Leverages its "batteries-included" philosophy.
   - **FastAPI**: Preferred for high-concurrency APIs, microservices, or projects prioritizing minimal latency and asynchronous I/O. Suitable when a custom admin panel is preferred over Django's monolithic structure.
-  - **Hybrid Architecture**: Permitted. Use Django for core logic/admin and expose specific endpoints via FastAPI if performance tuning is required.
 - **Interface Design**: `RESTful` > `RPC`; `Asynchronous` > `Synchronous`.
-- **Database Operations**: `SQLAlchemy` (with FastAPI) or `Django ORM` (with Django) as the primary mechanism.
+- **Database Operations**: `SQLAlchemy` (with `FastAPI`) or `Django ORM` (with `Django`) as the primary mechanism.
 - **Configuration Files**: Priority order: `TOML` > `INI` > `YAML` > `JSON` > `Python Dict`.
 - **MCP Transport**: Prefer `Streamable HTTP` over `SSE`.
 - **MCP Tools**: All tool definitions must include explicit **English** `instructions` detailing preconditions, inputs, and expected outputs.
@@ -206,7 +206,7 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 
 ### 5.1 架构映射
 
-| 原始值    | 归一化值  |
+| Original Value    | Normalized Value  |
 | --------- | --------- |
 | `aarch64` | `aarch64` |
 | `arm64`   | `aarch64` |
@@ -215,7 +215,7 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 
 ### 5.2 发行版映射
 
-| 原始值           | 归一化值 |
+| Original Value           | Normalized Value |
 | ---------------- | -------- |
 | `rhel`           | `RedHat` |
 | `centos`         | `RedHat` |
@@ -235,6 +235,17 @@ http://192.168.19.22/tsc_python-0.9.5-Redhat-x86_64-20260330.sh
 | `fitstarryskyos` | `Euler`  |
 | `hce`            | `Euler`  |
 | `ningos`         | `Euler`  |
+
+### 5.3 Tool Package Name & Architecture Mapping
+eg: `tsc_tools-2.0.3.beta9-noarch-20260323.sh`, `tsc_python-0.9.7-Euler-x86_64-20260408.sh`
+explan: `package_name-version<-distro>-arch-release_date.sh`
+map:
+
+| Original Value | ormalized Value | target system |
+| --- | --- | --- |
+| arch | x86_64 | x86_64 |
+| arch | aarch64 | aarch64/amd64 |
+| arch | noarch | x86_64/amd64/aarch64/amd64 |
 
 ## 6. 执行参数规格
 

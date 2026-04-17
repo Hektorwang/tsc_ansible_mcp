@@ -28,6 +28,10 @@ def register_check_host_status(server):
 - Check tsc_tools installation status
 - Check tsc_python installation status
 
+## Important Note
+
+If tsc_tools or tsc_python are not installed on the target hosts, use the bootstrap_tsc_environment playbook tool to install them.
+
 ## Tool Calls
 
 ```json

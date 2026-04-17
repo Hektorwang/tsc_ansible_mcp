@@ -1,0 +1,141 @@
+# @meta: {
+#   "description": "Bootstrap TSC environment including tsc_tools and tsc_python. Use this tool if check_host_status reports that tsc_tools or tsc_python are not installed.",
+#   "author": "tsc",
+#   "tags": ["bootstrap", "tsc", "tools", "python", "安装", "环境初始化"],
+#   "parameters": [
+#     {
+#       "name": "api_url",
+#       "type": "str",
+#       "default": "http://localhost:8500/api/v1/packages/download",
+#       "description": "API endpoint for package download"
+#     }
+#   ],
+#   "use_cases": [
+#     "Install tsc_tools and tsc_python on target hosts",
+#     "Bootstrap TSC environment on new servers",
+#     "Automate package installation via API",
+#     "Detect system distro and arch automatically"
+#   ],
+#   "Success on": "rc=0",
+#   "example": {
+#     "playbook": "bootstrap_tsc_environment.yml",
+#     "targets": ["192.168.1.10"],
+#     "extravars": {
+#       "api_url": "http://your-server:8500/api/v1/packages/download"
+#     },
+#     "user": "root",
+#     "password": "your_password"
+#   },
+#   "notes": [
+#     "Does not require Python on target hosts (uses raw/shell modules)",
+#     "Automatically detects system distro and architecture",
+#     "Checks existing installation status before proceeding",
+#     "Retries up to 3 times if download fails",
+#     "Supports HTTPS with -k flag"
+#   ]
+# }
+---
+- name: Bootstrap TSC environment
+  hosts: all
+  gather_facts: false
+  vars:
+    api_url: "http://localhost:8500/api/v1/packages/download"
+
+  tasks:
+    - name: Detect distribution
+      ansible.builtin.shell:
+        cmd: |-
+          cat /etc/os-release | grep ID= | head -1 | cut -d= -f2 | tr -d '"'
+        executable: /bin/bash
+      register: distro_output
+      ignore_errors: true
+
+    - name: Detect architecture
+      ansible.builtin.shell:
+        cmd: |-
+          uname -m
+        executable: /bin/bash
+      register: arch_output
+      ignore_errors: true
+
+    - name: Set distro and arch facts
+      ansible.builtin.set_fact:
+        distro: "{{ distro_output.stdout.strip() }}"
+        arch: "{{ arch_output.stdout.strip() }}"
+
+    - name: Check if tsc_tools is already installed
+      ansible.builtin.shell:
+        cmd: |-
+          command -v tsc_tools || echo 'not_installed'
+        executable: /bin/bash
+      register: tsc_tools_check
+      ignore_errors: true
+
+    - name: Check if tsc_python is already installed
+      ansible.builtin.shell:
+        cmd: |-
+          command -v tsc_python || echo 'not_installed'
+        executable: /bin/bash
+      register: tsc_python_check
+      ignore_errors: true
+
+    - name: Set installation flags
+      ansible.builtin.set_fact:
+        install_tsc_tools: "{{ 'not_installed' in tsc_tools_check.stdout }}"
+        install_tsc_python: "{{ 'not_installed' in tsc_python_check.stdout }}"
+
+    - name: Download and install tsc_tools
+      when: install_tsc_tools
+      ansible.builtin.shell:
+        cmd: |-
+          set -e
+          set -o pipefail
+          curl -k -o /tmp/tsc_tools.sh "{{ api_url }}?pkg_type=tsc_tools&distro={{ distro }}&arch={{ arch }}"
+          chmod +x /tmp/tsc_tools.sh
+          /tmp/tsc_tools.sh
+          rm -f /tmp/tsc_tools.sh
+        executable: /bin/bash
+      register: tsc_tools_install
+      retries: 3
+      delay: 10
+      until: tsc_tools_install.rc == 0
+
+    - name: Download and install tsc_python
+      when: install_tsc_python
+      ansible.builtin.shell:
+        cmd: |-
+          set -e
+          set -o pipefail
+          curl -k -o /tmp/tsc_python.sh "{{ api_url }}?pkg_type=tsc_python&distro={{ distro }}&arch={{ arch }}"
+          chmod +x /tmp/tsc_python.sh
+          /tmp/tsc_python.sh
+          rm -f /tmp/tsc_python.sh
+        executable: /bin/bash
+      register: tsc_python_install
+      retries: 3
+      delay: 10
+      until: tsc_python_install.rc == 0
+
+    - name: Verify tsc_tools installation
+      when: install_tsc_tools
+      ansible.builtin.shell:
+        cmd: |-
+          tsc_tools --version
+        executable: /bin/bash
+      register: tsc_tools_verify
+      ignore_errors: true
+
+    - name: Verify tsc_python installation
+      when: install_tsc_python
+      ansible.builtin.shell:
+        cmd: |-
+          tsc_python --version
+        executable: /bin/bash
+      register: tsc_python_verify
+      ignore_errors: true
+
+    - name: Show installation results
+      ansible.builtin.debug:
+        msg:
+          - "tsc_tools installed: {{ 'success' if tsc_tools_verify.rc == 0 else 'failed' }}"
+          - "tsc_python installed: {{ 'success' if tsc_python_verify.rc == 0 else 'failed' }}"

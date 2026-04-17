@@ -50,53 +50,53 @@ class Server:
     """统一服务类，同时提供 MCP 和 REST API"""
 
     MCP_INSTRUCTIONS = """
-TSC Ansible MCP 服务 - 远程主机自动化管理工具集
+TSC Ansible MCP Service - Remote Host Automation Management Toolkit
 
-## 服务简介
-本服务提供远程主机的自动化管理能力，包括主机状态检查、软件安装、命令执行、文件分发等功能。
-基于 Ansible 实现，支持批量操作多台主机。
+## Service Overview
+This service provides automated remote host management capabilities, including host status checking, software installation, command execution, file distribution, and more.
+Built on Ansible, supporting batch operations on multiple hosts.
 
-## 核心功能
-1. **主机状态检查** - 检查架构、发行版、Python、tsc_tools 安装状态
-2. **软件安装** - 安装 tsc_tools 工具集和 tsc_python 环境
-3. **命令执行** - 在远程主机上执行 shell 命令
-4. **文件操作** - 文件分发和获取
-5. **Playbook 执行** - 运行 Ansible playbook
+## Core Features
+1. **Host Status Check** - Check architecture, distribution, Python, and tsc_tools installation status
+2. **Software Installation** - Install tsc_tools toolkit and tsc_python environment
+3. **Command Execution** - Execute shell commands on remote hosts
+4. **File Operations** - File distribution and retrieval
+5. **Playbook Execution** - Run Ansible playbooks
 
-## 重要：安装顺序
-安装软件时必须遵循以下顺序，不可颠倒：
-1. **先安装 tsc_tools** - 调用 install_tsc_tools
-2. **再安装 tsc_python** - 调用 install_python
+## Important: Installation Order
+When installing software, you must follow this order, do not reverse:
+1. **Install tsc_tools first** - Call install_tsc_tools
+2. **Then install tsc_python** - Call install_python
 
-## 推荐工作流程
-1. 调用 check_host_status 检查主机状态
-2. 如果 tsc_tools 未安装 -> 调用 install_tsc_tools
-3. 如果 Python 未安装 -> 调用 install_python
-4. 安装成功后 -> 执行其他操作
+## Recommended Workflow
+1. Call check_host_status to check host status
+2. If tsc_tools is not installed -> Call bootstrap_tsc_environment or install_tsc_tools
+3. If Python is not installed -> Call bootstrap_tsc_environment or install_python
+4. After successful installation -> Perform other operations
 
-## 认证方式
-支持密码和私钥两种 SSH 认证方式：
-- 密码认证：传递 user、password 参数
-- 私钥认证：传递 user、private_key 参数
+## Important Note
+If check_host_status reports that tsc_tools or tsc_python are not installed, use the bootstrap_tsc_environment playbook tool to install them.
 
-## 使用示例
+## Authentication Methods
+Supports both password and private key SSH authentication:
+- Password authentication: Provide user, password parameters
+- Private key authentication: Provide user, private_key parameters
+
+## Usage Examples
 ```
-# 1. 检查主机状态
+# 1. Check host status
 check_host_status(targets=["192.168.1.1"], user="root", password="xxx")
 
-# 2. 安装 tsc_tools（必须先安装）
-install_tsc_tools(targets=["192.168.1.1"], user="root", password="xxx")
+# 2. Install tsc_tools and tsc_python (recommended)
+playbook_bootstrap_tsc_environment(targets=["192.168.1.1"], user="root", password="xxx")
 
-# 3. 安装 Python
-install_python(targets=["192.168.1.1"], user="root", password="xxx")
-
-# 4. 执行命令
+# 3. Execute command
 ansible_shell(targets=["192.168.1.1"], command="ls -la", user="root", password="xxx")
 
-# 5. 列出 playbook
+# 4. List playbooks
 list_playbooks()
 
-# 6. 执行 playbook
+# 5. Execute playbook
 ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="root", password="xxx")
 ```
 """
@@ -495,6 +495,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         @app.get("/health", summary="健康检查")
         async def health_check() -> Dict[str, str]:
             return {"status": "healthy"}
+
+        # 集成包管理路由
+        from lib.api.routes import packages
+        app.include_router(packages.router)
 
         return app
 

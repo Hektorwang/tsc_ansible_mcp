@@ -259,6 +259,10 @@ class Config:
         return self.nginx_settings.get(
             "tsc_tools_url_template", "/tsc_tools-{version}-noarch-{date}.sh"
         )
+    
+    @property
+    def tsc_local_path(self) -> Path:
+        return Path(self.nginx_settings.get("local_path", "/home/tsc/cicd/html"))
 
     @property
     def execution_settings(self) -> Dict[str, Any]:
@@ -522,3 +526,6 @@ class Config:
     @property
     def result_store_dir(self) -> str:
         return self.execution_settings.get("result_store_dir", "logs/task_results")
+
+# 创建全局配置实例
+settings = Config()

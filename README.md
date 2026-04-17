@@ -16,10 +16,11 @@ TSC Ansible MCP 是一个远程主机自动化管理平台，支持通过 MCP �
 - tsc_tools 工具集安装状态
 - CPU 架构和操作系统发行版识别
 
-### 2. 软件安装
+### 2. Software Installation
 
-- **tsc_tools 工具集安装** - 自动从配置的 Nginx 服务器下载并安装
-- **tsc_python 环境安装** - 根据主机架构和发行版自动选择安装包
+- **bootstrap_tsc_environment Playbook** - Bootstraps tsc_tools and tsc_python environment using API (no nginx required)
+- **tsc_tools Toolkit Installation** - Downloads and installs from configured package repository
+- **tsc_python Environment Installation** - Automatically selects installation package based on host architecture and distribution
 
 ### 3. 命令执行
 
@@ -341,22 +342,26 @@ curl -X POST http://localhost:8500/api/v1/playbooks/execute \
   }'
 ```
 
-## 重要说明
+## Important Notes
 
-### 安装顺序
+### Installation Order
 
-安装软件时必须遵循以下顺序，不可颠倒：
+When installing software, you must follow this order, do not reverse:
 
-1. **先安装 tsc_tools** - 调用 `install_tsc_tools`
-2. **再安装 tsc_python** - 调用 `install_python`
+1. **Install tsc_tools first** - Call `install_tsc_tools` or `playbook_bootstrap_tsc_environment`
+2. **Then install tsc_python** - Call `install_python` or `playbook_bootstrap_tsc_environment`
 
-### 推荐工作流程
+### Recommended Workflow
 
-1. 调用 `check_host_status` 检查主机状态
-2. 如果主机不可达（返回 error 字段）→ 停止对该主机的后续操作
-3. 如果 tsc_tools 未安装 → 调用 `install_tsc_tools`
-4. 如果 Python 未安装 → 调用 `install_python`
-5. 安装成功后 → 执行其他操作
+1. Call `check_host_status` to check host status
+2. If host is unreachable (returns error field) → Stop further operations on this host
+3. If tsc_tools is not installed → Use `playbook_bootstrap_tsc_environment`
+4. If tsc_python is not installed → Use `playbook_bootstrap_tsc_environment`
+5. After successful installation → Perform other operations
+
+### Important
+
+If check_host_status reports that tsc_tools or tsc_python are not installed, use the bootstrap_tsc_environment playbook tool to install them.
 
 ### 认证方式
 
@@ -397,24 +402,24 @@ Playbook 文件应包含元数据，供 LLM 理解用途：
 
 ## MCP 工具列表
 
-### 基础工具
+### Basic Tools
 
-| 工具名称            | 功能描述                                        |
-| ------------------- | ----------------------------------------------- |
-| `check_host_status` | 检查主机状态（架构、发行版、Python、tsc_tools） |
-| `install_tsc_tools` | 安装 tsc_tools 环境                             |
-| `install_python`    | 安装 tsc_python 环境                            |
-| `ansible_shell`     | 执行远程 Shell 命令                             |
-| `ansible_copy`      | 分发文件到远程主机                              |
-| `ansible_fetch`     | 从远程主机获取文件                              |
-| `list_playbooks`    | 列出可用的 playbook 文件                        |
-| `ansible_playbook`  | 执行 playbook 文件                              |
-| `get_task_status`   | 查询任务状态                                    |
-| `set_context`       | 设置上下文键值对                                |
-| `get_context`       | 获取上下文值                                    |
-| `delete_context`    | 删除指定的上下文键值对                          |
-| `list_contexts`     | 列出所有上下文键值对                            |
-| `clear_contexts`    | 清空所有上下文数据                              |
+| Tool Name           | Description                                          |
+| ------------------- | ---------------------------------------------------- |
+| `check_host_status` | Check host status (architecture, distribution, Python, tsc_tools) |
+| `install_tsc_tools` | Install tsc_tools environment                        |
+| `install_python`    | Install tsc_python environment                       |
+| `ansible_shell`     | Execute remote Shell commands                        |
+| `ansible_copy`      | Distribute files to remote hosts                     |
+| `ansible_fetch`     | Retrieve files from remote hosts                     |
+| `list_playbooks`    | List available playbook files                        |
+| `ansible_playbook`  | Execute playbook files                               |
+| `get_task_status`   | Query task status                                    |
+| `set_context`       | Set context key-value pairs                          |
+| `get_context`       | Get context value                                    |
+| `delete_context`    | Delete specified context key-value pairs             |
+| `list_contexts`     | List all context key-value pairs                     |
+| `clear_contexts`    | Clear all context data                               |
 
 ### 动态 Playbook 工具
 

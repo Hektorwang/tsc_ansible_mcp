@@ -1,5 +1,84 @@
 # Release Notes
 
+## Version=1.12.0
+
+2026-04-16
+
+### New Features
+
+#### 1. Package Manager and API
+
+Eliminates nginx dependency by implementing a direct API-based package transfer system.
+
+- **Package Scanner** - Scans and filters installation packages, supporting noarch packages
+- **Package Manager** - Core package management logic with normalization and caching
+- **API Endpoints** - Integrated package download, list, and cache refresh endpoints
+- **No nginx Required** - Direct file transfer from MCP server to target hosts
+
+#### 2. Bootstrap Playbook
+
+New `bootstrap_tsc_environment.yml` playbook that automates environment bootstrapping.
+
+- **Automatic Detection** - Detects system distro and architecture automatically
+- **API Integration** - Downloads packages via API endpoints
+- **HTTPS Support** - Uses `curl -k` for HTTPS compatibility
+- **Installation Status Check** - Verifies existing installations before proceeding
+
+#### 3. English Documentation
+
+All MCP tool descriptions and documentation have been updated to English.
+
+- **MCP_INSTRUCTIONS** - Complete English rewrite with improved clarity
+- **README.md** - Updated with English descriptions and new feature documentation
+- **Tool Descriptions** - All MCP tool descriptions are now in English
+
+### Improvements
+
+#### 1. Workflow Optimization
+
+Added clear guidance on using bootstrap_tsc_environment playbook.
+
+- **check_host_status Integration** - Check host status first
+- **Bootstrap Recommendation** - Use bootstrap_tsc_environment when packages are missing
+- **Simplified Process** - One playbook handles both tsc_tools and tsc_python
+
+#### 2. Package Management
+
+Generic package filtering method that matches arch and distro before sorting by version.
+
+- **Noarch Support** - Special handling for noarch packages
+- **Distro/Arch Normalization** - Consistent handling across different systems
+- **Version Sorting** - Proper version-based package selection
+
+### Technical Implementation
+
+#### Package Manager Architecture
+
+```
+lib/package_manager/
+├── scanner.py    - Package scanning and filtering
+├── manager.py    - Core package management logic
+└── normalizer.py - Distro and arch normalization
+
+lib/api/routes/
+└── packages.py   - API endpoints for package management
+```
+
+#### API Endpoints
+
+- `GET /api/v1/packages/download` - Download latest package
+- `GET /api/v1/packages/list/{pkg_type}` - List available packages
+- `POST /api/v1/packages/refresh` - Refresh package cache
+
+### Documentation Updates
+
+- Updated `README.md` - Added v1.12.0 feature descriptions
+- Updated `MCP_INSTRUCTIONS` - Complete English rewrite
+- Updated `check_host_status.py` - Added English note about bootstrap_tsc_environment
+- Updated `bootstrap_tsc_environment.yml` - Added proper metadata and English description
+
+---
+
 ## Version=1.11.0
 
 2026-04-14
