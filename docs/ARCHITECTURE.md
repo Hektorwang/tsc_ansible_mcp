@@ -307,7 +307,6 @@ bash /tmp/tsc_tools.sh
 3. 解析每个 playbook 的元数据（JSON 格式）
 4. 生成工具定义（名称、描述、参数）
 5. 使用 @mcp.tool() 装饰器动态注册工具
-6. 启动 watchdog 文件监控
 ```
 
 **工具命名规则**:
@@ -320,12 +319,6 @@ bash /tmp/tsc_tools.sh
 - 必须包含 `description` 字段
 - 建议包含 `parameters`、`use_cases`、`example`、`notes` 字段
 - 缺少元数据的 playbook 将被跳过并在日志中告警
-
-**文件监控**:
-
-- 使用 watchdog 库实现跨平台文件监控
-- 监控事件: 文件创建、修改、删除
-- 热更新限制: 需要重启服务才能使新的工具生效
 
 ### 4.12 JWT 认证架构
 

@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from lib.models import Base, Context, Task
 from lib.tsc_logger import get_logger
-from lib.models import Base, Task, Context
 
 logger = get_logger()
 

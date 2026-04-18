@@ -5,17 +5,17 @@ MCP工具包
 _register_dynamic_playbook_tools() 统一注册，不在此处调用。
 """
 
-from .ansible_shell import register_ansible_shell
-from .install_python import register_install_python
-from .install_tsc_tools import register_install_tsc_tools
-from .check_host_status import register_check_host_status
 from .ansible_copy import register_ansible_copy
 from .ansible_fetch import register_ansible_fetch
-from .list_playbooks import register_list_playbooks
 from .ansible_playbook import register_ansible_playbook
+from .ansible_shell import register_ansible_shell
+from .check_host_status import register_check_host_status
 from .context import register_context_tools
-from .task_results import register_task_results_tools
+from .install_python import register_install_python
+from .install_tsc_tools import register_install_tsc_tools
+from .list_playbooks import register_list_playbooks
 from .release_host_locks import register_release_host_locks
+from .task_results import register_task_results_tools
 
 
 def register_mcp_tools(server):

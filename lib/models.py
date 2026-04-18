@@ -4,9 +4,10 @@
 定义所有请求和响应的数据模型以及数据库模型
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, String, Text, DateTime, JSON
+from sqlalchemy import JSON, Column, DateTime, String, Text
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()

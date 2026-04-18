@@ -5,17 +5,13 @@
 """
 
 import re
+import tomllib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
 
 from lib.tsc_logger import get_logger
-
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib
 
 logger = get_logger()
 
@@ -259,7 +255,7 @@ class Config:
         return self.nginx_settings.get(
             "tsc_tools_url_template", "/tsc_tools-{version}-noarch-{date}.sh"
         )
-    
+
     @property
     def tsc_local_path(self) -> Path:
         return Path(self.nginx_settings.get("local_path", "/home/tsc/cicd/html"))
@@ -295,11 +291,17 @@ class Config:
 
     @property
     def ssh_base_args(self) -> str:
-        return self.ssh_settings.get("base_args", "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ForwardX11=no -o GSSAPIAuthentication=no -o VerifyHostKeyDNS=no")
+        return self.ssh_settings.get(
+            "base_args",
+            "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ForwardX11=no -o GSSAPIAuthentication=no -o VerifyHostKeyDNS=no",
+        )
 
     @property
     def ssh_password_args(self) -> str:
-        return self.ssh_settings.get("password_args", "-o PreferredAuthentications=password -o PubkeyAuthentication=no")
+        return self.ssh_settings.get(
+            "password_args",
+            "-o PreferredAuthentications=password -o PubkeyAuthentication=no",
+        )
 
     def _get_cache_path(self) -> Path:
         base_dir = Path(__file__).parent.parent.resolve()
@@ -526,6 +528,7 @@ class Config:
     @property
     def result_store_dir(self) -> str:
         return self.execution_settings.get("result_store_dir", "logs/task_results")
+
 
 # 创建全局配置实例
 settings = Config()

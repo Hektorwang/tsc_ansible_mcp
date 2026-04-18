@@ -75,7 +75,7 @@ If validation fails, prompt the user for manual intervention.
 
 ## 2. 路径约束
 
-- `venv/`: 本工具 `python` 虚环境
+- `.venv/`: 本工具 `python` 虚环境
 - `bin/`: 本工具脚本, 可执行文件
 - `docs/`: 设计文档
 - `tmp`: 临时文件
@@ -323,7 +323,6 @@ map:
 | PyJWT          | >= 2.8.0   |
 | pydantic       | >= 2.0.0   |
 | loguru         | >= 0.7.0   |
-| watchdog       | >= 3.0.0   |
 
 ## 10. 动态 Playbook 工具生成机制
 
@@ -334,7 +333,6 @@ map:
 - 扫描 `playbooks/` 目录下的所有 `.yml` 和 `.yaml` 文件
 - 解析 playbook 元数据（JSON 格式）
 - 生成工具定义（名称、描述、参数）
-- 使用 watchdog 监控文件变化
 
 ### 10.2 工具生成规则
 
@@ -363,28 +361,7 @@ map:
 - extravars: 额外变量（根据元数据中的 parameters 字段）
 - timeout: 超时时间
 
-### 10.3 文件监控
-
-**监控机制**:
-
-- 使用 watchdog 库实现跨平台文件监控
-- Linux: 使用 inotify
-- macOS: 使用 FSEvents
-- Windows: 使用 ReadDirectoryChangesW
-
-**监控事件**:
-
-- 文件创建: 新增 playbook 工具
-- 文件修改: 更新 playbook 工具定义
-- 文件删除: 移除 playbook 工具
-
-**热更新限制**:
-
-- 文件变化时会更新缓存
-- 需要重启服务才能使新的工具生效
-- 原因: FastMCP 的工具注册机制限制
-
-### 10.4 元数据要求
+### 10.3 元数据要求
 
 **必填字段**:
 

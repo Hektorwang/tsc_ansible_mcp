@@ -242,6 +242,24 @@ lib/api/routes/
 - `extravars` 参数类型改为 `Optional[Union[Dict[str, Any], str]]`
 - 添加字符串解析逻辑，自动将 JSON 字符串转换为字典
 
+### 移除功能
+
+#### 1. 移除 Playbook 实时文件监控
+
+移除了 watchdog 库实现的实时文件监控功能。
+
+**移除原因：**
+- FastMCP 的工具注册机制限制，文件变化后需要重启服务才能使新的工具生效
+- 实时监控功能实际无意义，反而增加系统复杂度
+
+**移除内容：**
+- 移除 `PlaybookScanner.start_watching()` 方法
+- 移除 `PlaybookScanner.stop_watching()` 方法
+- 移除 `PlaybookScanner.on_file_created/modified/deleted()` 方法
+- 移除 `PlaybookEventHandler` 类
+- 移除 `lib/server.py` 中的 lifespan 监控代码
+- Playbooks 改为启动时加载一次
+
 ### 改进
 
 #### 1. Playbook 参数可选性优化
@@ -746,12 +764,12 @@ user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 - **自动工具注册** - 服务启动时自动扫描 playbooks 目录，为每个 playbook 动态生成独立的 MCP 工具
 - **工具命名** - 使用 playbook 文件名（不含扩展名）作为工具名称
 - **元数据解析** - 支持 JSON 格式的元数据解析，自动生成工具描述
-- **文件监控** - 使用 watchdog 库监控 playbook 文件变化（需重启服务生效）
+- ~~**文件监控** - 使用 watchdog 库监控 playbook 文件变化（需重启服务生效）~~ (已在 v1.10.0 移除)
 - **LLM 体验提升** - LLM 无需先调用 list_playbooks，可直接调用 playbook 工具
 
 #### 2. 技术改进
 
-- **新增依赖** - 添加 watchdog>=3.0.0 用于文件监控
+- ~~**新增依赖** - 添加 watchdog>=3.0.0 用于文件监控~~ (已在 v1.10.0 移除)
 - **PlaybookScanner 类** - 新增 `lib/playbook_scanner.py` 模块
 - **元数据规范** - playbook 必须包含 description 字段才能生成工具
 

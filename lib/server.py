@@ -20,29 +20,29 @@ from lib.error_handler import error_handler
 from lib.execution_service import ExecutionService
 from lib.executor import Executor
 from lib.inventory_manager import InventoryManager
-from lib.tsc_logger import get_logger
 from lib.mcp_tools import register_mcp_tools
 from lib.permission import require_permission
 from lib.playbook_scanner import PlaybookScanner
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 
 
 from lib.models import (
-    CredentialsModel,
-    ShellRequest,
+    AddInventoryRequest,
     CopyRequest,
+    CredentialsModel,
+    DeleteContextRequest,
+    ErrorResponse,
     FetchRequest,
-    PlaybookRequest,
+    GetContextRequest,
     HostRequest,
     InstallPythonRequest,
     InstallTscToolsRequest,
-    AddInventoryRequest,
-    TaskResponse,
-    ErrorResponse,
+    PlaybookRequest,
     SetContextRequest,
-    GetContextRequest,
-    DeleteContextRequest,
+    ShellRequest,
+    TaskResponse,
 )
 
 
@@ -53,26 +53,25 @@ class Server:
 TSC Ansible MCP Service - Remote Host Automation Management Toolkit
 
 ## Service Overview
-This service provides automated remote host management capabilities, including host status checking, software installation, command execution, file distribution, and more.
+This service provides automated remote host management capabilities, including host status checking, target host runtime environment bootstraping, command execution, file distribution, and more.
 Built on Ansible, supporting batch operations on multiple hosts.
 
 ## Core Features
-1. **Host Status Check** - Check architecture, distribution, Python, and tsc_tools installation status
+1. **Host Status Check** - Check architecture, distribution, tsc_tools, and tsc_python(a pre-compiled python3 environment) installation status
 2. **Software Installation** - Install tsc_tools toolkit and tsc_python environment
 3. **Command Execution** - Execute shell commands on remote hosts
 4. **File Operations** - File distribution and retrieval
 5. **Playbook Execution** - Run Ansible playbooks
 
 ## Important: Installation Order
-When installing software, you must follow this order, do not reverse:
+When bootstraping runtime envionment, you must follow this order, do not reverse:
 1. **Install tsc_tools first** - Call install_tsc_tools
 2. **Then install tsc_python** - Call install_python
 
 ## Recommended Workflow
 1. Call check_host_status to check host status
-2. If tsc_tools is not installed -> Call bootstrap_tsc_environment or install_tsc_tools
-3. If Python is not installed -> Call bootstrap_tsc_environment or install_python
-4. After successful installation -> Perform other operations
+2. If tsc_tools or tsc_python is not installed -> Call bootstrap_tsc_environment, it will install tsc_tools and tsc_python
+3. After successful installation -> Perform other operations
 
 ## Important Note
 If check_host_status reports that tsc_tools or tsc_python are not installed, use the bootstrap_tsc_environment playbook tool to install them.
@@ -200,14 +199,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             )(tool_func)
 
             logger.info(f"已注册 playbook 工具: {tool_name}")
-
-    def _on_playbook_changed(self) -> None:
-        """Playbook 文件变化回调
-
-        注意: 由于 FastMCP 的工具注册机制，文件变化后需要重启服务才能生效
-        """
-        logger.info("检测到 playbook 文件变化，更新已缓存")
-        logger.warning("注意: 需要重启服务才能使新的 playbook 工具生效")
 
     def _create_fastapi_app(self) -> FastAPI:
         app = FastAPI(
@@ -498,6 +489,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         # 集成包管理路由
         from lib.api.routes import packages
+
         app.include_router(packages.router)
 
         return app
@@ -508,19 +500,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         # http_app(path="/") 设置 MCP 端点为根路径
         # 然后我们会将它挂载到 FastAPI 的 /mcp 路径
         mcp_app = self.mcp.http_app(path="/", transport="streamable-http")
-        from contextlib import asynccontextmanager
 
         from lib.middleware import MCPAuthorizationMiddleware
 
-        @asynccontextmanager
-        async def lifespan(app):
-            self.playbook_scanner.start_watching(self._on_playbook_changed)
-            # MCP 应用有自己的 lifespan，我们需要同时管理
-            async with mcp_app.lifespan(app):
-                yield
-            self.playbook_scanner.stop_watching()
-
-        self.app.router.lifespan_context = lifespan
+        self.app.router.lifespan_context = mcp_app.router.lifespan_context
 
         # 使用授权中间件包装 MCP 应用
         authorized_mcp_app = MCPAuthorizationMiddleware(mcp_app, self.auth)

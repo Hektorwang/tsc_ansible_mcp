@@ -14,10 +14,7 @@ def register_release_host_locks(server):
     mcp: FastMCP = server.mcp
     executor = server.executor
 
-    @mcp.tool(
-        name="release_host_locks",
-        description="释放主机锁"
-    )
+    @mcp.tool(name="release_host_locks", description="释放主机锁")
     def release_host_locks(
         targets: Optional[List[str]] = None,
     ):
@@ -41,19 +38,14 @@ def register_release_host_locks(server):
                 # 由于_active_hosts是私有的，我们需要使用反射或修改executor类
                 # 为了简单起见，我们可以创建一个临时列表来存储所有活跃主机
                 import inspect
+
                 # 获取_active_hosts属性
-                active_hosts = getattr(executor, '_active_hosts', set())
+                active_hosts = getattr(executor, "_active_hosts", set())
                 if active_hosts:
                     executor._release_hosts(list(active_hosts))
-            
+
             logger.info("主机锁释放成功")
-            return {
-                "status": "success",
-                "message": "主机锁释放成功"
-            }
+            return {"status": "success", "message": "主机锁释放成功"}
         except Exception as e:
             logger.error(f"释放主机锁失败: {str(e)}")
-            return {
-                "status": "failed",
-                "message": f"释放主机锁失败: {str(e)}"
-            }
+            return {"status": "failed", "message": f"释放主机锁失败: {str(e)}"}

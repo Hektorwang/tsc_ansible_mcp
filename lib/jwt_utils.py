@@ -158,9 +158,7 @@ class JWTUtils:
         )
         return token
 
-    def _is_token_in_issued_records(
-        self, token: str, payload: Dict[str, Any]
-    ) -> bool:
+    def _is_token_in_issued_records(self, token: str, payload: Dict[str, Any]) -> bool:
         """Return True if this JWT is still allowed by jwt_issued_tokens.json.
 
         Prefer matching the stored ``token`` string (v1.7.0+). If at least one
@@ -177,7 +175,8 @@ class JWTUtils:
             return True
 
         has_stored_token = any(
-            isinstance(r.get("token"), str) and r.get("token") for r in self.issued_tokens
+            isinstance(r.get("token"), str) and r.get("token")
+            for r in self.issued_tokens
         )
         if not has_stored_token:
             return True

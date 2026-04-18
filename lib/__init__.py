@@ -6,8 +6,8 @@ from lib.config import Config
 from lib.database import Database, TaskRepository
 from lib.executor import Executor
 from lib.inventory_manager import InventoryManager
-from lib.tsc_logger import get_logger
 from lib.models import Task
+from lib.tsc_logger import get_logger
 
 __all__ = [
     "Config",

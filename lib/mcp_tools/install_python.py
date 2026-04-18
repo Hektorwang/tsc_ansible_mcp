@@ -5,10 +5,10 @@ install_python工具模块
 """
 
 import uuid
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from lib.tsc_logger import get_logger
 from lib.permission import require_permission
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 

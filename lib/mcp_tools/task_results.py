@@ -4,10 +4,10 @@
 查询任务执行结果的MCP工具
 """
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
-from lib.tsc_logger import get_logger
 from lib.permission import require_permission
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 

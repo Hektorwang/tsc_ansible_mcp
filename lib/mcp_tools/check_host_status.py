@@ -5,10 +5,10 @@ check_host_status工具模块
 """
 
 import uuid
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from lib.tsc_logger import get_logger
 from lib.permission import require_permission
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 
@@ -74,5 +74,7 @@ If tsc_tools or tsc_python are not installed on the target hosts, use the bootst
         result = server.execution_service.check_host_status(
             targets, credentials, timeout, task_id
         )
-        logger.info(f"MCP 工具响应: check_host_status, task_id={task_id}, result={result}")
+        logger.info(
+            f"MCP 工具响应: check_host_status, task_id={task_id}, result={result}"
+        )
         return result

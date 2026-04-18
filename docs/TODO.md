@@ -216,7 +216,7 @@
 - [x] 创建 PlaybookScanner 类 (`lib/playbook_scanner.py`)
 - [x] 实现 playbook 元数据解析（JSON 格式）
 - [x] 实现动态工具注册机制
-- [x] 添加 watchdog 文件监控
+- [x] ~~添加 watchdog 文件监控~~ (已移除 v1.10.0，现改为启动时加载一次)
 - [x] 更新文档（PRD.md, SPEC.md, ARCHITECTURE.md）
 - [x] 代码格式化和类型检查
 

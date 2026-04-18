@@ -5,10 +5,10 @@ ansible_playbook工具模块
 """
 
 import uuid
-from typing import List, Optional, Dict, Any, Union
+from typing import Any, Dict, List, Optional, Union
 
-from lib.tsc_logger import get_logger
 from lib.permission import require_permission
+from lib.tsc_logger import get_logger
 
 logger = get_logger()
 
@@ -90,5 +90,7 @@ def register_ansible_playbook(server):
         result = server.execution_service.execute_playbook(
             playbook, targets, credentials, extravars, timeout, task_id
         )
-        logger.info(f"MCP 工具响应: ansible_playbook, task_id={task_id}, result={result}")
+        logger.info(
+            f"MCP 工具响应: ansible_playbook, task_id={task_id}, result={result}"
+        )
         return result

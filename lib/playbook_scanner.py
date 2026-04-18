@@ -1,16 +1,13 @@
 """
 Playbook 扫描器和动态工具生成器
 
-负责扫描 playbooks 目录，解析元数据，生成动态工具定义，并监控文件变化
+负责扫描 playbooks 目录，解析元数据，生成动态工具定义
 """
 
 import json
 import re
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
-
-from watchdog.events import FileSystemEventHandler
-from watchdog.observers import Observer
+from typing import Any, Dict, List, Optional
 
 from lib.config import Config
 from lib.tsc_logger import get_logger
@@ -25,8 +22,6 @@ class PlaybookScanner:
         self.config = config
         self.playbooks_path = config.playbooks_path
         self.playbooks: Dict[str, Dict[str, Any]] = {}
-        self.observer: Optional[Any] = None
-        self.update_callback: Optional[Callable[[], None]] = None
 
     def scan_playbooks(self) -> Dict[str, Dict[str, Any]]:
         """扫描所有 playbook 文件
@@ -307,106 +302,3 @@ class PlaybookScanner:
                 description_parts.append(f"  - {note}")
 
         return "\n".join(description_parts)
-
-    def start_watching(self, callback: Callable) -> None:
-        """启动文件监控
-
-        Args:
-            callback: 文件变化时的回调函数
-        """
-        if self.observer is not None:
-            logger.warning("文件监控已在运行")
-            return
-
-        self.update_callback = callback
-
-        event_handler = PlaybookEventHandler(self)
-        self.observer = Observer()
-        self.observer.schedule(event_handler, str(self.playbooks_path), recursive=False)
-        self.observer.start()
-
-        logger.info(f"开始监控 playbook 目录: {self.playbooks_path}")
-
-    def stop_watching(self) -> None:
-        """停止文件监控"""
-        if self.observer is not None:
-            self.observer.stop()
-            self.observer.join()
-            self.observer = None
-            logger.info("停止监控 playbook 目录")
-
-    def on_file_created(self, file_path: Path) -> None:
-        """文件创建事件处理
-
-        Args:
-            file_path: 创建的文件路径
-        """
-        if file_path.suffix not in [".yml", ".yaml"]:
-            return
-
-        logger.info(f"检测到新 playbook 文件: {file_path}")
-        self._process_playbook_file(file_path)
-
-        if self.update_callback:
-            self.update_callback()
-
-    def on_file_modified(self, file_path: Path) -> None:
-        """文件修改事件处理
-
-        Args:
-            file_path: 修改的文件路径
-        """
-        if file_path.suffix not in [".yml", ".yaml"]:
-            return
-
-        logger.info(f"检测到 playbook 文件修改: {file_path}")
-
-        playbook_name = file_path.stem
-        if playbook_name in self.playbooks:
-            del self.playbooks[playbook_name]
-
-        self._process_playbook_file(file_path)
-
-        if self.update_callback:
-            self.update_callback()
-
-    def on_file_deleted(self, file_path: Path) -> None:
-        """文件删除事件处理
-
-        Args:
-            file_path: 删除的文件路径
-        """
-        if file_path.suffix not in [".yml", ".yaml"]:
-            return
-
-        logger.info(f"检测到 playbook 文件删除: {file_path}")
-
-        playbook_name = file_path.stem
-        if playbook_name in self.playbooks:
-            del self.playbooks[playbook_name]
-            logger.info(f"已移除 playbook: {playbook_name}")
-
-        if self.update_callback:
-            self.update_callback()
-
-
-class PlaybookEventHandler(FileSystemEventHandler):
-    """Playbook 文件事件处理器"""
-
-    def __init__(self, scanner: PlaybookScanner):
-        self.scanner = scanner
-
-    def on_created(self, event):
-        """文件创建事件"""
-        if not event.is_directory:
-            self.scanner.on_file_created(Path(event.src_path))
-
-    def on_modified(self, event):
-        """文件修改事件"""
-        if not event.is_directory:
-            self.scanner.on_file_modified(Path(event.src_path))
-
-    def on_deleted(self, event):
-        """文件删除事件"""
-        if not event.is_directory:
-            self.scanner.on_file_deleted(Path(event.src_path))
