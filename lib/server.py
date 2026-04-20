@@ -1,7 +1,7 @@
 """
-统一服务模块
+Unified service module
 
-MCP + REST API 统一服务入口
+Unified service entry for MCP + REST API
 """
 
 import json
@@ -47,7 +47,7 @@ from lib.models import (
 
 
 class Server:
-    """统一服务类，同时提供 MCP 和 REST API"""
+    """Unified service class providing both MCP and REST API"""
 
     MCP_INSTRUCTIONS = """
 TSC Ansible MCP Service - Remote Host Automation Management Toolkit
@@ -110,9 +110,9 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         self.inventory_manager = InventoryManager()
         self.executor = Executor(self.config, self.inventory_manager)
         self.auth = AuthMiddleware(self.config)
-        # 设置全局 auth 实例，供权限检查装饰器使用
+        # Set global auth instance for permission check decorator
         Server._auth_instance = self.auth
-        # 更新日志配置
+        # Update log configuration
         from lib.tsc_logger import tsc_logger
 
         tsc_logger.update_config(self.config._data)
@@ -128,15 +128,15 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
     @property
     def execution_service(self) -> ExecutionService:
-        """执行服务"""
+        """Execution service."""
         return ExecutionService(self.executor, self.task_repo, logger)
 
     def _register_mcp_tools(self) -> None:
-        """注册MCP工具"""
+        """Register MCP tools."""
         register_mcp_tools(self)
 
     def _register_dynamic_playbook_tools(self) -> None:
-        """动态注册 playbook 工具"""
+        """Dynamically register playbook tools."""
         self.playbook_scanner.scan_playbooks()
 
         for playbook_name, metadata in self.playbook_scanner.playbooks.items():
@@ -156,7 +156,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 ) -> Dict[str, Any]:
 
                     logger.info(
-                        f"MCP 工具调用: playbook_{playbook_name}, targets={targets}"
+                        f"MCP tool call: playbook_{playbook_name}, targets={targets}"
                     )
                     parsed_extravars: Optional[Dict[str, Any]] = None
                     if extravars is not None:
@@ -198,12 +198,12 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 description=tool_description,
             )(tool_func)
 
-            logger.info(f"已注册 playbook 工具: {tool_name}")
+            logger.info(f"Registered playbook tool: {tool_name}")
 
     def _create_fastapi_app(self) -> FastAPI:
         app = FastAPI(
             title="TSC_ANSIBLE_MCP API",
-            description="TSC Ansible MCP REST API 服务",
+            description="TSC Ansible MCP REST API service",
             version="1.10.0",
             docs_url="/docs",
             redoc_url="/redoc",
@@ -216,7 +216,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 content={"status": "error", "message": exc.detail},
             )
 
-        @app.post("/api/v1/shell", summary="执行 Shell 命令")
+        @app.post("/api/v1/shell", summary="Execute Shell command")
         @error_handler
         async def ansible_shell(
             request: ShellRequest,
@@ -242,7 +242,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             )
             return result
 
-        @app.get("/api/v1/executor/tasks/{task_id}", summary="查询任务状态")
+        @app.get("/api/v1/executor/tasks/{task_id}", summary="Query task status")
         async def get_task(
             task_id: str,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
@@ -250,9 +250,9 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             task = self.task_repo.get(task_id)
             if task:
                 return task
-            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
 
-        @app.get("/api/v1/executor/tasks", summary="查询任务列表")
+        @app.get("/api/v1/executor/tasks", summary="Query task list")
         async def list_tasks(
             status_filter: Optional[str] = None,
             limit: int = 100,
@@ -260,22 +260,22 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         ) -> List[Dict[str, Any]]:
             return self.task_repo.list(status=status_filter, limit=limit)
 
-        @app.delete("/api/v1/executor/tasks/{task_id}", summary="删除任务")
+        @app.delete("/api/v1/executor/tasks/{task_id}", summary="Delete task")
         async def delete_task(
             task_id: str,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, str]:
             if self.task_repo.delete(task_id):
-                return {"status": "success", "message": f"任务 {task_id} 已删除"}
-            raise HTTPException(status_code=404, detail=f"任务不存在: {task_id}")
+                return {"status": "success", "message": f"Task {task_id} deleted"}
+            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
 
-        @app.get("/api/v1/executor/stats", summary="任务统计")
+        @app.get("/api/v1/executor/stats", summary="Task statistics")
         async def get_stats(
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, int]:
             return self.task_repo.stats()
 
-        @app.post("/api/v1/hosts/status", summary="检查主机状态")
+        @app.post("/api/v1/hosts/status", summary="Check host status")
         @error_handler
         async def check_host_status(
             request: HostRequest,
@@ -298,7 +298,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             )
             return result
 
-        @app.post("/api/v1/hosts/python/install", summary="安装 Python")
+        @app.post("/api/v1/hosts/python/install", summary="Install Python")
         @error_handler
         async def install_python(
             request: InstallPythonRequest,
@@ -321,7 +321,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             )
             return result
 
-        @app.post("/api/v1/hosts/tsc_tools/install", summary="安装 tsc_tools")
+        @app.post("/api/v1/hosts/tsc_tools/install", summary="Install tsc_tools")
         @error_handler
         async def install_tsc_tools(
             request: InstallTscToolsRequest,
@@ -344,7 +344,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             )
             return result
 
-        @app.post("/api/v1/copy", summary="Ansible Copy 模块")
+        @app.post("/api/v1/copy", summary="Ansible Copy module")
         @error_handler
         async def ansible_copy(
             request: CopyRequest,
@@ -373,7 +373,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @app.post(
             "/api/v1/fetch",
-            summary="Ansible Fetch 模块",
+            summary="Ansible Fetch module",
         )
         @error_handler
         async def ansible_fetch(
@@ -404,7 +404,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @app.get(
             "/api/v1/playbooks",
-            summary="列出 Playbook",
+            summary="List playbooks",
         )
         async def list_playbooks(
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
@@ -416,7 +416,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 "count": len(playbooks),
             }
 
-        @app.post("/api/v1/playbooks/execute", summary="执行 Playbook")
+        @app.post("/api/v1/playbooks/execute", summary="Execute Playbook")
         @error_handler
         async def execute_playbook(
             request: PlaybookRequest,
@@ -445,7 +445,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @app.post(
             "/api/v1/inventory",
-            summary="添加主机到 Inventory",
+            summary="Add host to inventory",
         )
         async def add_inventory(
             request: AddInventoryRequest,
@@ -466,7 +466,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @app.get(
             "/api/v1/inventory",
-            summary="查询 Inventory",
+            summary="Query inventory",
         )
         async def list_inventory(
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
@@ -475,7 +475,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
         @app.delete(
             "/api/v1/inventory/{host}",
-            summary="从 Inventory 删除主机",
+            summary="Remove host from inventory",
         )
         async def remove_inventory(
             host: str,
@@ -483,11 +483,11 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         ) -> Dict[str, Any]:
             return self.inventory_manager.remove_host(host)
 
-        @app.get("/health", summary="健康检查")
+        @app.get("/health", summary="Health check")
         async def health_check() -> Dict[str, str]:
             return {"status": "healthy"}
 
-        # 集成包管理路由
+        # Integrate package management routes
         from lib.api.routes import packages
 
         app.include_router(packages.router)
@@ -495,22 +495,22 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         return app
 
     def get_asgi_app(self):
-        """获取 ASGI 应用，挂载 MCP 到 FastAPI"""
-        # 创建 MCP 应用（Streamable HTTP transport）
-        # http_app(path="/") 设置 MCP 端点为根路径
-        # 然后我们会将它挂载到 FastAPI 的 /mcp 路径
+        """Get ASGI application, mount MCP to FastAPI"""
+        # Create MCP application (Streamable HTTP transport)
+        # http_app(path="/") sets MCP endpoint to root path
+        # Then we mount it to FastAPI at /mcp path
         mcp_app = self.mcp.http_app(path="/", transport="streamable-http")
 
         from lib.middleware import MCPAuthorizationMiddleware
 
         self.app.router.lifespan_context = mcp_app.router.lifespan_context
 
-        # 使用授权中间件包装 MCP 应用
+        # Wrap MCP application with authorization middleware
         authorized_mcp_app = MCPAuthorizationMiddleware(mcp_app, self.auth)
 
-        # 将 MCP 应用挂载到 FastAPI 应用的 /mcp 路径
-        # 这样 MCP 端点在 http://host:port/mcp
-        # REST API 端点在 http://host:port/api/v1/...
+        # Mount MCP application to FastAPI application at /mcp path
+        # This makes MCP endpoints at http://host:port/mcp
+        # REST API endpoints at http://host:port/api/v1/...
         self.app.mount("/mcp", authorized_mcp_app)
 
         return self.app

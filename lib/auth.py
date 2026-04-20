@@ -1,7 +1,7 @@
 """
-JWT 认证中间件模块
+JWT authentication middleware module.
 
-提供 JWT 认证和权限控制功能
+Provides JWT authentication and permission control functionality.
 """
 
 import ipaddress
@@ -20,13 +20,13 @@ logger = get_logger()
 
 
 class AuthMiddleware:
-    """JWT 认证中间件类"""
+    """JWT authentication middleware class."""
 
     def __init__(self, config: Config):
-        """初始化认证中间件
+        """Initialize authentication middleware.
 
         Args:
-            config: 配置对象
+            config: Configuration object.
         """
         self.config = config
         self.enabled = config.get("auth.enabled", False)
@@ -60,19 +60,19 @@ class AuthMiddleware:
         self.security = HTTPBearer(auto_error=False)
 
         logger.info(
-            f"JWT 认证中间件初始化: enabled={self.enabled}, "
+            f"JWT authentication middleware initialized: enabled={self.enabled}, "
             f"secret_key_file={secret_key_file}, "
             f"roles={list(tool_permissions.keys())}"
         )
 
     def _get_file_path(self, file_path: str) -> Path:
-        """获取文件绝对路径
+        """Get absolute file path.
 
         Args:
-            file_path: 文件路径（相对或绝对）
+            file_path: File path (relative or absolute).
 
         Returns:
-            绝对路径
+            Absolute path.
         """
         path = Path(file_path)
         if path.is_absolute():
@@ -84,13 +84,13 @@ class AuthMiddleware:
     def _parse_whitelist(
         self, ip_list: List[str]
     ) -> List[Union[ipaddress.IPv4Network, ipaddress.IPv6Network]]:
-        """解析 IP 白名单配置
+        """Parse IP whitelist configuration.
 
         Args:
-            ip_list: IP 地址列表
+            ip_list: List of IP addresses.
 
         Returns:
-            IP 网络列表
+            List of IP networks.
         """
         networks = []
         for ip in ip_list:
@@ -99,19 +99,19 @@ class AuthMiddleware:
                     networks.append(ipaddress.ip_network(ip, strict=False))
                 else:
                     networks.append(ipaddress.ip_network(f"{ip}/32"))
-                logger.debug(f"IP 白名单添加: {ip}")
+                logger.debug(f"IP whitelist added: {ip}")
             except ValueError as e:
-                logger.warning(f"无效的 IP 白名单配置: {ip}, 错误: {e}")
+                logger.warning(f"Invalid IP whitelist configuration: {ip}, error: {e}")
         return networks
 
     def is_ip_allowed(self, client_ip: str) -> bool:
-        """检查客户端 IP 是否在白名单中
+        """Check if client IP is in whitelist.
 
         Args:
-            client_ip: 客户端 IP 地址
+            client_ip: Client IP address.
 
         Returns:
-            是否允许
+            Whether allowed.
         """
         if not self.whitelist_ips:
             return True
@@ -120,20 +120,20 @@ class AuthMiddleware:
             ip_addr = ipaddress.ip_address(client_ip)
             allowed = any(ip_addr in network for network in self.whitelist_ips)
             if not allowed:
-                logger.warning(f"IP {client_ip} 不在白名单中")
+                logger.warning(f"IP {client_ip} not in whitelist")
             return allowed
         except ValueError as e:
-            logger.warning(f"无效的客户端 IP: {client_ip}, 错误: {e}")
+            logger.warning(f"Invalid client IP: {client_ip}, error: {e}")
             return False
 
     def _get_client_ip(self, request: Request) -> str:
-        """获取客户端真实 IP
+        """Get client real IP.
 
         Args:
-            request: 请求对象
+            request: Request object.
 
         Returns:
-            客户端 IP 地址
+            Client IP address.
         """
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
@@ -151,15 +151,15 @@ class AuthMiddleware:
     def _create_jwt_error_response(
         self, code: str, message: str, details: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """创建 JWT 认证失败的错误响应
+        """Create JWT authentication failure error response.
 
         Args:
-            code: 错误码
-            message: 错误消息
-            details: 错误详情
+            code: Error code.
+            message: Error message.
+            details: Error details.
 
         Returns:
-            错误响应字典
+            Error response dictionary.
         """
         error: Dict[str, Any] = {
             "code": code,
@@ -173,16 +173,16 @@ class AuthMiddleware:
         }
 
     async def verify_request(self, request: Request) -> Dict[str, Any]:
-        """验证请求（IP 白名单 + JWT 认证）
+        """Verify request (IP whitelist + JWT authentication).
 
         Args:
-            request: 请求对象
+            request: Request object.
 
         Returns:
-            用户信息字典
+            User information dictionary.
 
         Raises:
-            HTTPException: 认证失败
+            HTTPException: Authentication failed.
         """
         if not self.enabled:
             return {"sub": "auth_disabled", "name": "auth_disabled", "role": "admin"}
@@ -190,7 +190,7 @@ class AuthMiddleware:
         client_ip = self._get_client_ip(request)
 
         if not self.is_ip_allowed(client_ip):
-            logger.warning(f"IP 白名单验证失败: {client_ip}")
+            logger.warning(f"IP whitelist verification failed: {client_ip}")
             raise HTTPException(
                 status_code=403,
                 detail=self._create_jwt_error_response(
@@ -200,7 +200,7 @@ class AuthMiddleware:
 
         authorization = request.headers.get("Authorization")
         if not authorization or not authorization.startswith("Bearer "):
-            logger.warning(f"JWT Token 缺失, IP: {client_ip}")
+            logger.warning(f"JWT Token missing, IP: {client_ip}")
             raise HTTPException(
                 status_code=401,
                 detail=self._create_jwt_error_response(
@@ -214,11 +214,11 @@ class AuthMiddleware:
         payload = self.jwt_utils.verify_jwt(token)
 
         if not payload:
-            logger.warning(f"无效的 JWT Token, IP: {client_ip}")
+            logger.warning(f"Invalid JWT Token, IP: {client_ip}")
             raise HTTPException(
                 status_code=401,
                 detail=self._create_jwt_error_response(
-                    "TOKEN_INVALID", "JWT Token 无效或已过期"
+                    "TOKEN_INVALID", "JWT Token invalid or expired"
                 ),
                 headers={"WWW-Authenticate": "Bearer"},
             )
@@ -230,27 +230,27 @@ class AuthMiddleware:
         }
 
         logger.info(
-            f"JWT 认证成功: IP={client_ip}, User={user_info['name']}({user_info['sub']}), Role={user_info['role']}"
+            f"JWT authentication successful: IP={client_ip}, User={user_info['name']}({user_info['sub']}), Role={user_info['role']}"
         )
 
         return user_info
 
     def check_tool_permission(self, user_info: Dict[str, Any], tool_name: str) -> bool:
-        """检查用户是否有权限调用工具
+        """Check if user has permission to call tool.
 
         Args:
-            user_info: 用户信息
-            tool_name: 工具名称
+            user_info: User information.
+            tool_name: Tool name.
 
         Returns:
-            是否有权限
+            Whether has permission.
         """
         role = user_info.get("role", "user")
         has_permission = self.jwt_utils.check_permission(role, tool_name)
 
         if not has_permission:
             logger.warning(
-                f"权限不足: User={user_info.get('name')}({user_info.get('sub')}), "
+                f"Insufficient permission: User={user_info.get('name')}({user_info.get('sub')}), "
                 f"Role={role}, Tool={tool_name}"
             )
 
@@ -265,15 +265,15 @@ class AuthMiddleware:
         response_status: str,
         response_data: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """记录审计日志
+        """Log audit log.
 
         Args:
-            user_info: 用户信息
-            request: 请求对象
-            tool_name: 工具名称
-            request_params: 请求参数
-            response_status: 响应状态
-            response_data: 响应数据
+            user_info: User information.
+            request: Request object.
+            tool_name: Tool name.
+            request_params: Request parameters.
+            response_status: Response status.
+            response_data: Response data.
         """
         client_ip = self._get_client_ip(request)
 
@@ -295,15 +295,15 @@ class AuthMiddleware:
             else:
                 log_data["response_summary"] = str(response_data)[:200]
 
-        logger.info(f"审计日志: {json.dumps(log_data, ensure_ascii=False)}")
+        logger.info(f"Audit log: {json.dumps(log_data, ensure_ascii=False)}")
 
     def get_user_permissions(self, role: str) -> List[str]:
-        """获取角色的权限列表
+        """Get permissions list for role.
 
         Args:
-            role: 用户角色
+            role: User role.
 
         Returns:
-            权限列表
+            List of permissions.
         """
         return self.jwt_utils.get_user_permissions(role)

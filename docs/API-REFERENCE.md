@@ -763,11 +763,15 @@ Content-Type: application/json
 
 ### 5.2 认证请求头
 
-所有 API 请求（除了健康检查端点）必须在请求头中携带 JWT Token：
+大多数 API 请求（除了健康检查端点和包管理端点）必须在请求头中携带 JWT Token：
 
 ```http
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
+
+**无需认证的端点**：
+- `/health` - 健康检查
+- `/api/v1/packages/*` - 包管理接口（供目标主机在 bootstrap 过程中使用）
 
 **认证说明**：
 

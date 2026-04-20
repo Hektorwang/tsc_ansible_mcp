@@ -1,7 +1,7 @@
 """
-Ansible 执行引擎模块
+Ansible execution engine module.
 
-提供远程命令执行、环境探测、Python 安装等功能
+Provides remote command execution, environment detection, Python installation, and other functions.
 """
 
 import json
@@ -27,7 +27,7 @@ logger = get_logger()
 
 
 class Executor:
-    """Ansible 执行引擎"""
+    """Ansible execution engine."""
 
     def __init__(self, config: Config, inventory_manager: InventoryManager):
         self.config = config
@@ -40,13 +40,14 @@ class Executor:
         self._install_signal_handlers()
 
     def _acquire_hosts(self, hosts: List[str]) -> tuple[bool, List[str]]:
-        """尝试获取主机的执行锁
+        """Attempt to acquire execution locks for hosts.
 
         Args:
-            hosts: 需要获取锁的主机列表
+            hosts: List of hosts to acquire locks for.
 
         Returns:
-            tuple[bool, List[str]]: (success, busy_hosts) 是否成功获取，以及繁忙的主机列表
+            tuple[bool, List[str]]: (success, busy_hosts) Whether acquisition was successful,
+            and list of busy hosts.
         """
         logger.debug(f"[LOCK] Attempting to acquire locks for hosts: {hosts}")
         with self._lock:
@@ -67,10 +68,10 @@ class Executor:
             return True, []
 
     def _release_hosts(self, hosts: List[str]) -> None:
-        """释放主机的执行锁
+        """Release execution locks for hosts.
 
         Args:
-            hosts: 需要释放锁的主机列表
+            hosts: List of hosts to release locks for.
 
         Returns:
             None
@@ -97,18 +98,18 @@ class Executor:
             )
 
     def _install_signal_handlers(self):
-        """安装信号处理器以确保锁被释放"""
+        """Install signal handlers to ensure locks are released."""
 
         def signal_handler(signum, frame):
-            logger.warning(f"[SIGNAL] 收到信号 {signum}，正在释放主机锁...")
+            logger.warning(f"[SIGNAL] Received signal {signum}, releasing host locks...")
             with self._lock:
                 if self._current_task_hosts:
-                    logger.warning(f"[SIGNAL] 释放锁: {self._current_task_hosts}")
+                    logger.warning(f"[SIGNAL] Releasing locks: {self._current_task_hosts}")
                     for host in self._current_task_hosts:
                         if host in self._active_hosts:
                             self._active_hosts.remove(host)
                     self._current_task_hosts = []
-            logger.warning("[SIGNAL] 主机锁已释放，程序即将退出")
+            logger.warning("[SIGNAL] Host locks released, program exiting...")
             if signum == signal.SIGINT:
                 raise KeyboardInterrupt("Ctrl+C interrupted")
             elif signum == signal.SIGTERM:
@@ -122,7 +123,7 @@ class Executor:
         )
 
     def _restore_signal_handlers(self):
-        """恢复原始信号处理器"""
+        """Restore original signal handlers."""
         for sig, handler in self._original_signal_handler.items():
             signal.signal(sig, handler)
 
@@ -133,16 +134,16 @@ class Executor:
         elapsed: float,
         task_type: str = "execution",
     ) -> Dict[str, Any]:
-        """构建摘要返回结果
+        """Build summary result for return.
 
         Args:
-            task_id: 任务 ID
-            results: 所有主机的执行结果
-            elapsed: 执行耗时
-            task_type: 任务类型
+            task_id: Task ID.
+            results: Execution results for all hosts.
+            elapsed: Execution elapsed time.
+            task_type: Task type.
 
         Returns:
-            摘要结果字典
+            Summary result dictionary.
         """
         task_result_store.save_result(task_id, {"results": results, "elapsed": elapsed})
 
@@ -178,9 +179,9 @@ class Executor:
             else:
                 status = "failed"
 
-        message = f"执行完成，{failed_count} 台主机失败"
+        message = f"Execution completed, {failed_count} hosts failed"
         if failed_count > 0:
-            message += f"。使用 get_task_detail('{task_id}', host) 查看详情"
+            message += f". Use get_task_detail('{task_id}', host) to view details"
 
         return {
             "task_id": task_id,
@@ -202,24 +203,24 @@ class Executor:
         targets: List[str],
         credentials: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """构建 Ansible inventory
+        """Build Ansible inventory.
 
         Args:
-            targets: 目标主机列表
-            credentials: LLM 提供的凭据信息
+            targets: List of target hosts.
+            credentials: Credentials information provided by LLM.
 
         Returns:
-            Ansible inventory 字典
+            Ansible inventory dictionary.
         """
         inventory: Dict[str, Any] = {"all": {"hosts": {}}}
         for target in targets:
-            # 特殊处理 localhost，使用 local 连接而不是 SSH
+            # Special handling for localhost, using local connection instead of SSH
             if target == "localhost":
                 host_data: Dict[str, Any] = {
                     "ansible_connection": "local",
                     "ansible_python_interpreter": "/usr/bin/python3",
                 }
-                logger.debug(f"使用 local 连接处理 localhost")
+                logger.debug(f"Using local connection for localhost")
             else:
                 host_data: Dict[str, Any] = {
                     "ansible_host": target,
@@ -228,16 +229,16 @@ class Executor:
 
                 cached_host = self.inventory_manager.get_host(target)
 
-                # 首先使用缓存的信息（如果有）
+                # First use cached information (if available)
                 if cached_host:
                     host_data.update(cached_host)
-                    logger.debug(f"使用缓存的 inventory 信息: {target}")
+                    logger.debug(f"Using cached inventory info: {target}")
                     if "ansible_python_interpreter" in cached_host:
                         logger.debug(
-                            f"使用缓存的 Python 解释器: {cached_host['ansible_python_interpreter']}"
+                            f"Using cached Python interpreter: {cached_host['ansible_python_interpreter']}"
                         )
 
-                # 如果提供了新的凭据，覆盖缓存的信息
+                # If new credentials provided, override cached information
                 if credentials:
                     if "user" in credentials:
                         host_data["ansible_user"] = credentials["user"]
@@ -249,7 +250,7 @@ class Executor:
                             f"{self.config.ssh_base_args} {self.config.ssh_password_args}"
                         )
                         logger.debug(
-                            f"使用提供的凭据: {target}, SSH参数: {host_data['ansible_ssh_common_args']}"
+                            f"Using provided credentials: {target}, SSH args: {host_data['ansible_ssh_common_args']}"
                         )
                     elif "private_key" in credentials:
                         host_data["ansible_ssh_private_key_file"] = credentials[
@@ -257,10 +258,10 @@ class Executor:
                         ]
                         host_data["ansible_ssh_common_args"] = self.config.ssh_base_args
                         logger.debug(
-                            f"使用提供的凭据: {target}, SSH参数: {host_data['ansible_ssh_common_args']}"
+                            f"Using provided credentials: {target}, SSH args: {host_data['ansible_ssh_common_args']}"
                         )
                     else:
-                        logger.debug(f"使用提供的凭据: {target}")
+                        logger.debug(f"Using provided credentials: {target}")
 
             inventory["all"]["hosts"][target] = host_data
         return inventory
@@ -273,17 +274,17 @@ class Executor:
         extravars: Optional[Dict[str, Any]] = None,
         playbook_file: Optional[Path] = None,
     ) -> tuple[Any, List[Dict[str, Any]]]:
-        """执行 Ansible playbook
+        """Execute Ansible playbook.
 
         Args:
-            playbook: playbook 内容（当 playbook_file 为 None 时使用）
-            inventory: Ansible inventory 字典
-            timeout: 超时时间（秒）
-            extravars: 额外变量
-            playbook_file: 直接指定 playbook 文件路径，优先于 playbook 参数
+            playbook: Playbook content (used when playbook_file is None).
+            inventory: Ansible inventory dictionary.
+            timeout: Timeout in seconds.
+            extravars: Extra variables.
+            playbook_file: Directly specify playbook file path, takes precedence over playbook parameter.
 
         Returns:
-            tuple[Any, List[Dict[str, Any]]]: (ansible_runner result, events 列表)
+            tuple[Any, List[Dict[str, Any]]]: (ansible_runner result, events list).
         """
         timeout = min(timeout or self.config.default_timeout, self.config.max_timeout)
         task_id = str(uuid.uuid4())
@@ -315,12 +316,12 @@ class Executor:
                 playbook_content = yaml.dump(playbook, allow_unicode=True)
                 resolved_playbook_path.write_text(playbook_content, encoding="utf-8")
 
-            logger.debug(f"执行 playbook: {resolved_playbook_path}")
+            logger.debug(f"Executing playbook: {resolved_playbook_path}")
             logger.debug(f"Inventory: {inventory_path}")
-            logger.info(f"开始执行 Ansible playbook: {resolved_playbook_path}")
-            logger.info(f"使用 inventory: {inventory_path}")
+            logger.info(f"Starting Ansible playbook execution: {resolved_playbook_path}")
+            logger.info(f"Using inventory: {inventory_path}")
             logger.info(
-                f"目标主机: {list(inventory.get('all', {}).get('hosts', {}).keys())}"
+                f"Target hosts: {list(inventory.get('all', {}).get('hosts', {}).keys())}"
             )
 
             result = ansible_runner.run(
@@ -333,13 +334,13 @@ class Executor:
 
             events = list(result.events)
 
-        logger.info(f"Ansible 执行完成，返回码: {result.rc}")
-        logger.info(f"Ansible 执行事件数量: {len(events)}")
-        logger.info(f"Ansible 执行统计信息: {result.stats}")
+        logger.info(f"Ansible execution completed, return code: {result.rc}")
+        logger.info(f"Ansible execution event count: {len(events)}")
+        logger.info(f"Ansible execution statistics: {result.stats}")
 
         elapsed = time.time() - start_time
 
-        # 只记录关键事件，减少日志开销，并同时计算统计信息
+        # Only record key events to reduce log overhead, while calculating statistics simultaneously
         total_hosts = len(inventory.get("all", {}).get("hosts", {}))
         success_count = 0
         failed_count = 0
@@ -361,7 +362,7 @@ class Executor:
                     result=res,
                 )
 
-            # 同时计算统计信息
+            # Calculate statistics simultaneously
             if event_type == "runner_on_ok":
                 success_count += 1
             elif event_type == "runner_on_failed":
@@ -391,13 +392,13 @@ class Executor:
         return result, events
 
     def _parse_wrapper_output(self, output: str) -> Dict[str, Any]:
-        """解析包装器输出
+        """Parse wrapper output.
 
         Args:
-            output: 包装器执行的输出
+            output: Wrapper execution output.
 
         Returns:
-            Dict[str, Any]: 解析后的结果，包含stdout、stderr、rc和elapsed
+            Dict[str, Any]: Parsed result, including stdout, stderr, rc, and elapsed.
         """
         result = {"stdout": "", "stderr": "", "rc": -1, "elapsed": "0s"}
         stdout_match = re.search(r"<<<STDOUT>>>(.*?)<<<STDERR>>>", output, re.DOTALL)
@@ -417,17 +418,17 @@ class Executor:
         inventory: Dict[str, Any],
         timeout: Optional[int] = None,
     ) -> Dict[str, bool]:
-        """测试主机连接性
+        """Test host connectivity.
 
         Args:
-            targets: 目标主机列表
-            inventory: Ansible inventory
-            timeout: 超时时间
+            targets: List of target hosts.
+            inventory: Ansible inventory.
+            timeout: Timeout.
 
         Returns:
-            字典，键为主机名，值为是否可连接
+            Dictionary with host names as keys and connectivity status as values.
         """
-        logger.info(f"测试主机连接性: {targets}")
+        logger.info(f"Testing host connectivity: {targets}")
 
         playbook = [
             {
@@ -457,12 +458,12 @@ class Executor:
                 host = event.get("event_data", {}).get("host", "")
                 if host in connectivity:
                     connectivity[host] = True
-                    logger.info(f"主机 {host} 连接测试成功")
+                    logger.info(f"Host {host} connection test successful")
             elif event_type in ["runner_on_failed", "runner_on_unreachable"]:
                 host = event.get("event_data", {}).get("host", "")
                 if host in connectivity:
                     connectivity[host] = False
-                    logger.warning(f"主机 {host} 连接测试失败")
+                    logger.warning(f"Host {host} connection test failed")
 
         return connectivity
 
@@ -473,7 +474,7 @@ class Executor:
         for host in hosts:
             results[host] = {"rc": -1, "stdout": "", "stderr": "", "elapsed": "0s"}
 
-        # 处理所有事件
+        # Process all events
         for event in events:
             event_type = event.get("event")
             event_data = event.get("event_data", {})
@@ -519,16 +520,16 @@ class Executor:
         task_id: Optional[str] = None,
         skip_lock: bool = False,
     ) -> Dict[str, Any]:
-        logger.info(f"检查主机状态: {targets}")
+        logger.info(f"Checking host status: {targets}")
         logger.debug(
-            f"凭据信息: user={credentials.get('user') if credentials else None}, port={credentials.get('port') if credentials else None}"
+            f"Credential info: user={credentials.get('user') if credentials else None}, port={credentials.get('port') if credentials else None}"
         )
 
-        # 检查主机是否繁忙（如果不跳过锁）
+        # Check if hosts are busy (if not skipping lock)
         if not skip_lock:
             acquired, busy_hosts = self._acquire_hosts(targets)
             if not acquired:
-                logger.warning(f"以下主机正在执行任务，拒绝请求: {busy_hosts}")
+                logger.warning(f"The following hosts are executing tasks, request rejected: {busy_hosts}")
                 self._release_hosts(targets)
                 return {
                     "task_id": task_id or str(uuid.uuid4()),
@@ -540,7 +541,7 @@ class Executor:
                     },
                     "results": {
                         host: {
-                            "error": f"主机 {host} 正在执行任务，请稍后再试",
+                            "error": f"Host {host} is executing a task, please try again later",
                             "error_type": "host_busy",
                         }
                         for host in targets
@@ -548,15 +549,15 @@ class Executor:
                 }
             self._current_task_hosts = targets
 
-        # 最终使用的 inventory
+        # Final inventory used
         final_inventory = None
 
         if credentials:
-            logger.info("使用提供的凭据构建 inventory...")
-            # 直接使用提供的凭据构建 inventory
+            logger.info("Building inventory with provided credentials...")
+            # Directly use provided credentials to build inventory
             final_inventory = self._build_inventory(targets, credentials)
 
-            # 对于提供了凭据的主机，更新缓存的凭据信息
+            # Update cached credential information for hosts with provided credentials
             for host in targets:
                 update_result = self.inventory_manager.update_host_credentials(
                     host=host,
@@ -567,20 +568,20 @@ class Executor:
                 )
                 if update_result.get("status") != "success":
                     logger.warning(
-                        f"更新主机凭据失败: {host}, 错误: {update_result.get('message')}"
+                        f"Failed to update host credentials: {host}, error: {update_result.get('message')}"
                     )
                 else:
-                    logger.info(f"主机 {host} 凭据已更新到缓存")
+                    logger.info(f"Host {host} credentials updated to cache")
         else:
-            # 没有提供凭据，使用缓存的 inventory
+            # No credentials provided, use cached inventory
             final_inventory = self._build_inventory(targets, credentials=None)
 
-        # 确保 final_inventory 不为 None
+        # Ensure final_inventory is not None
         if final_inventory is None:
             final_inventory = self._build_inventory(targets, credentials=None)
 
         inventory = final_inventory
-        logger.debug(f"最终使用的 inventory: {inventory}")
+        logger.debug(f"Final inventory used: {inventory}")
 
         try:
             playbook = [
@@ -628,12 +629,12 @@ class Executor:
             ]
 
             result, events = self._run_ansible(playbook, inventory, timeout)
-            logger.debug(f"Ansible 执行返回码: {result.rc}")
-            logger.debug(f"Ansible 执行事件数量: {len(events)}")
-            # 打印前几个事件的详细信息
+            logger.debug(f"Ansible execution return code: {result.rc}")
+            logger.debug(f"Ansible execution event count: {len(events)}")
+            # Print detailed information for first few events
             for i, event in enumerate(events[:5]):
                 logger.debug(
-                    f"事件 {i}: {event.get('event')}, 主机: {event.get('event_data', {}).get('host')}, 任务: {event.get('event_data', {}).get('task')}"
+                    f"Event {i}: {event.get('event')}, host: {event.get('event_data', {}).get('host')}, task: {event.get('event_data', {}).get('task')}"
                 )
             results = {}
             for host in targets:
@@ -650,14 +651,14 @@ class Executor:
                 }
             for event in events:
                 event_type = event.get("event", "")
-                logger.debug(f"处理事件: {event_type}")
+                logger.debug(f"Processing event: {event_type}")
                 if event_type == "runner_on_ok":
                     event_data = event.get("event_data", {})
                     host = event_data.get("host", "")
                     task = event_data.get("task", "")
                     res = event_data.get("res", {})
                     logger.debug(
-                        f"主机 {host} 任务 '{task}' 执行成功, rc={res.get('rc')}"
+                        f"Host {host} task '{task}' executed successfully, rc={res.get('rc')}"
                     )
                     if host in results:
                         if "Detect architecture" in task:
@@ -667,7 +668,7 @@ class Executor:
                                 arch_raw
                             )
                             logger.info(
-                                f"主机 {host} 架构: raw={arch_raw}, normalized={results[host]['arch']}"
+                                f"Host {host} architecture: raw={arch_raw}, normalized={results[host]['arch']}"
                             )
                         elif "Detect distribution" in task:
                             distro_raw = res.get("stdout", "").strip()
@@ -680,7 +681,7 @@ class Executor:
                                 )
                                 results[host]["distro"] = normalized_distro
                                 logger.info(
-                                    f"主机 {host} 发行版: id={distro_id}, normalized={normalized_distro}"
+                                    f"Host {host} distribution: id={distro_id}, normalized={normalized_distro}"
                                 )
                         elif "Check Python3" in task:
                             python_path = res.get("stdout", "").strip()
@@ -689,7 +690,7 @@ class Executor:
                             )
                             if results[host]["python_installed"]:
                                 results[host]["python_path"] = python_path
-                                # 检查是否为 tsc_python
+                                # Check if it is tsc_python
                                 results[host]["tsc_python_installed"] = (
                                     "/tsc_tools/micromamba/envs/tsc_python/bin/python3"
                                     in python_path
@@ -697,12 +698,12 @@ class Executor:
                                 self.inventory_manager.update_python_interpreter(
                                     host, python_path
                                 )
-                                logger.info(f"主机 {host} Python 路径: {python_path}")
+                                logger.info(f"Host {host} Python path: {python_path}")
                                 logger.info(
-                                    f"主机 {host} tsc_python: {'已安装' if results[host]['tsc_python_installed'] else '未安装'}"
+                                    f"Host {host} tsc_python: {'installed' if results[host]['tsc_python_installed'] else 'not installed'}"
                                 )
                             else:
-                                logger.info(f"主机 {host} Python 未安装")
+                                logger.info(f"Host {host} Python not installed")
                         elif "Get Python version" in task:
                             version = res.get("stdout", "").strip()
                             results[host]["python_version"] = (
@@ -712,7 +713,7 @@ class Executor:
                             )
                             if results[host]["python_version"]:
                                 logger.info(
-                                    f"主机 {host} Python 版本: {results[host]['python_version']}"
+                                    f"Host {host} Python version: {results[host]['python_version']}"
                                 )
                         elif "Check tsc_tools" in task:
                             tsc_tools_output = res.get("stdout", "").strip()
@@ -720,31 +721,31 @@ class Executor:
                                 tsc_tools_output == "installed"
                             )
                             logger.info(
-                                f"主机 {host} tsc_tools: {'已安装' if results[host]['tsc_tools_installed'] else '未安装'}"
+                                f"Host {host} tsc_tools: {'installed' if results[host]['tsc_tools_installed'] else 'not installed'}"
                             )
                 elif event_type in ["runner_on_failed", "runner_on_unreachable"]:
                     event_data = event.get("event_data", {})
                     host = event_data.get("host", "")
                     task = event_data.get("task", "")
                     res = event_data.get("res", {})
-                    error_msg = res.get("msg", "未知错误")
+                    error_msg = res.get("msg", "Unknown error")
                     error_type = (
                         "host_unreachable"
                         if "unreachable" in event_type
                         else "task_failed"
                     )
-                    logger.warning(f"主机 {host} 任务 '{task}' 执行失败: {error_msg}")
+                    logger.warning(f"Host {host} task '{task}' execution failed: {error_msg}")
                     if host in results:
                         results[host]["error"] = error_msg
                         results[host]["error_task"] = task
                         results[host]["error_type"] = error_type
-                        # 不要将python_installed和tsc_tools_installed设置为False，因为我们无法确定它们的状态
+                        # Do not set python_installed and tsc_tools_installed to False as we cannot determine their status
                         logger.error(
-                            f"主机 {host} 执行失败 [{error_type}], task='{task}': {error_msg}"
+                            f"Host {host} execution failed [{error_type}], task='{task}': {error_msg}"
                         )
             for host, host_result in results.items():
                 logger.info(
-                    f"主机 {host} 状态汇总: arch={host_result.get('arch')}, "
+                    f"Host {host} status summary: arch={host_result.get('arch')}, "
                     f"distro={host_result.get('distro')}, "
                     f"python_installed={host_result.get('python_installed')}, "
                     f"tsc_tools_installed={host_result.get('tsc_tools_installed')}"
@@ -770,9 +771,9 @@ class Executor:
                 "results": results,
             }
         finally:
-            # 只有在不跳过锁的情况下才释放主机锁
+            # Only release host locks if not skipping lock
             if not skip_lock:
-                # 无论执行成功或失败，都释放主机锁
+                # Release host locks regardless of success or failure
                 self._release_hosts(targets)
                 self._current_task_hosts = []
 
@@ -784,35 +785,35 @@ class Executor:
         detect_result: Optional[Dict[str, Any]] = None,
         skip_lock: bool = False,
     ) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
-        """检查主机可达性并返回结果
+        """Check host reachability and return results
 
-        注意：此方法是对check_host_status的包装，用于提取不可达主机信息
+        Note: This method wraps check_host_status to extract unreachable host information
 
         Args:
-            targets: 目标主机列表
-            credentials: SSH 凭据
-            timeout: 超时时间
-            detect_result: 已有的探测结果，有值时直接使用，避免重复探测
-            skip_lock: 是否跳过锁的获取
+            targets: List of target hosts
+            credentials: SSH credentials
+            timeout: Timeout in seconds
+            detect_result: Existing detection results, use directly if available to avoid duplicate detection
+            skip_lock: Whether to skip lock acquisition
 
         Returns:
-            tuple: (不可达主机结果字典, 完整探测结果)
+            tuple: (unreachable host results dict, complete detection results)
         """
         if detect_result is None:
             detect_result = self.check_host_status(
                 targets, credentials, timeout, skip_lock=skip_lock
             )
-        logger.info(f"环境探测结果: {detect_result['results']}")
+        logger.info(f"Environment detection results: {detect_result['results']}")
         results = {}
         for host, env_info in detect_result["results"].items():
             if env_info.get("error"):
                 results[host] = {
                     "installed": False,
                     "skipped": False,
-                    "message": f"主机不可达: {env_info.get('error')}",
+                    "message": f"Host unreachable: {env_info.get('error')}",
                     "error": env_info.get("error"),
                 }
-                logger.warning(f"主机 {host} 不可达，跳过操作")
+                logger.warning(f"Host {host} unreachable, skipping operation")
         return results, detect_result
 
     def install_python(
@@ -824,7 +825,7 @@ class Executor:
         detect_result: Optional[Dict[str, Any]] = None,
         skip_lock: bool = False,
     ) -> Dict[str, Any]:
-        logger.info(f"安装 Python: {targets}")
+        logger.info(f"Installing Python: {targets}")
         results, detect_result = self._check_hosts_reachability(
             targets,
             credentials,
@@ -886,11 +887,11 @@ class Executor:
                         results[host] = {
                             "installed": True,
                             "skipped": True,
-                            "message": "tsc_python 已安装",
+                            "message": "tsc_python already installed",
                             "python_version": stdout.replace("installed", "").strip(),
                             "python_path": python_path,
                         }
-                        logger.info(f"主机 {host} tsc_python 已安装，跳过")
+                        logger.info(f"Host {host} tsc_python already installed, skipping")
                     else:
                         hosts_need_install.append(host)
             elif event.get("event") in ["runner_on_failed", "runner_on_unreachable"]:
@@ -925,16 +926,16 @@ class Executor:
                 results[host] = {
                     "installed": False,
                     "skipped": False,
-                    "message": f"无法获取主机架构或发行版信息: arch={arch}, distro={distro}",
+                    "message": f"Failed to get host architecture or distribution info: arch={arch}, distro={distro}",
                     "error": "environment_detection_failed",
                 }
                 logger.error(
-                    f"主机 {host} 无法获取环境信息: arch={arch}, distro={distro}"
+                    f"Host {host} failed to get environment info: arch={arch}, distro={distro}"
                 )
                 continue
             install_url = self.config.get_python_install_url(distro, arch)
             logger.info(
-                f"主机 {host} 安装信息: arch={arch}, distro={distro}, url={install_url}"
+                f"Host {host} installation info: arch={arch}, distro={distro}, url={install_url}"
             )
             install_tasks.append(
                 {
@@ -1017,14 +1018,14 @@ class Executor:
                         res = event_data.get("res", {})
                         task = event_data.get("task", "")
                         if "Install Python on" in task:
-                            host_result["message"] = "安装脚本执行失败"
+                            host_result["message"] = "Installation script execution failed"
                             host_result["install_output"] = (
                                 res.get("stdout", "")
                                 + res.get("stderr", "")
                                 + res.get("msg", "")
                             )
                         else:
-                            host_result["message"] = res.get("msg", "安装失败")
+                            host_result["message"] = res.get("msg", "Installation failed")
                             host_result["install_output"] = res.get("msg", "")
             results[host] = host_result
 
@@ -1057,7 +1058,7 @@ class Executor:
         detect_result: Optional[Dict[str, Any]] = None,
         skip_lock: bool = False,
     ) -> Dict[str, Any]:
-        logger.info(f"安装 tsc_tools: {targets}")
+        logger.info(f"Installing tsc_tools: {targets}")
         results, detect_result = self._check_hosts_reachability(
             targets,
             credentials,
@@ -1116,7 +1117,7 @@ class Executor:
                         stdout = res.get("stdout", "").strip()
                         if stdout == "installed":
                             results[host]["skipped"] = True
-                            results[host]["message"] = "tsc_tools 已安装"
+                            results[host]["message"] = "tsc_tools already installed"
         for host in hosts_need_check:
             if not results[host]["skipped"]:
                 hosts_need_install.append(host)
@@ -1138,7 +1139,7 @@ class Executor:
                 "results": results,
             }
         install_url = self.config.get_tsc_tools_install_url()
-        logger.info(f"安装 tsc_tools, url={install_url}")
+        logger.info(f"Installing tsc_tools, url={install_url}")
         install_playbook = [
             {
                 "name": "Install tsc_tools",
@@ -1204,9 +1205,9 @@ class Executor:
                             stdout = res.get("stdout", "").strip()
                             host_result["installed"] = stdout == "success"
                             if host_result["installed"]:
-                                host_result["message"] = "tsc_tools 安装成功"
+                                host_result["message"] = "tsc_tools installed successfully"
                             else:
-                                host_result["message"] = "tsc_tools 安装验证失败"
+                                host_result["message"] = "tsc_tools installation verification failed"
                 elif event.get("event") in [
                     "runner_on_failed",
                     "runner_on_unreachable",
@@ -1216,14 +1217,14 @@ class Executor:
                         res = event_data.get("res", {})
                         task = event_data.get("task", "")
                         if "Download and install tsc_tools" in task:
-                            host_result["message"] = "安装脚本执行失败"
+                            host_result["message"] = "Installation script execution failed"
                             host_result["install_output"] = (
                                 res.get("stdout", "")
                                 + res.get("stderr", "")
                                 + res.get("msg", "")
                             )
                         else:
-                            host_result["message"] = res.get("msg", "安装失败")
+                            host_result["message"] = res.get("msg", "Installation failed")
                             host_result["install_output"] = res.get("msg", "")
             results[host] = host_result
 
@@ -1257,10 +1258,10 @@ class Executor:
         task_id: Optional[str] = None,
         detect_result: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        logger.info(f"分发文件: {targets}, src={src}, dest={dest}")
+        logger.info(f"Dispatching files: {targets}, src={src}, dest={dest}")
         src_path = Path(src)
         if not src_path.exists():
-            logger.error(f"本地文件不存在: {src}")
+            logger.error(f"Local file not found: {src}")
             return {
                 "task_id": task_id or str(uuid.uuid4()),
                 "status": "failed",
@@ -1268,17 +1269,17 @@ class Executor:
                     host: {
                         "rc": -1,
                         "stdout": "",
-                        "stderr": f"本地文件不存在: {src}",
+                        "stderr": f"Local file not found: {src}",
                         "elapsed": "0s",
                         "error_type": "file_not_found",
                     }
                     for host in targets
                 },
             }
-        # 获取主机锁
+        # Acquire host locks
         acquired, busy_hosts = self._acquire_hosts(targets)
         if not acquired:
-            logger.warning(f"以下主机正在执行任务，拒绝请求: {busy_hosts}")
+            logger.warning(f"The following hosts are executing tasks, request rejected: {busy_hosts}")
             return {
                 "task_id": task_id or str(uuid.uuid4()),
                 "status": "failed",
@@ -1286,7 +1287,7 @@ class Executor:
                     host: {
                         "rc": -1,
                         "stdout": "",
-                        "stderr": f"主机 {host} 正在执行任务，请稍后再试",
+                        "stderr": f"Host {host} is executing a task, please try again later",
                         "elapsed": "0s",
                         "error_type": "host_busy",
                     }
@@ -1303,7 +1304,7 @@ class Executor:
                 h for h, info in detect_result["results"].items() if info.get("error")
             ]
             if unreachable_hosts:
-                logger.warning(f"以下主机不可达: {unreachable_hosts}")
+                logger.warning(f"The following hosts are unreachable: {unreachable_hosts}")
             reachable_hosts = [h for h in targets if h not in unreachable_hosts]
             if not reachable_hosts:
                 return {
@@ -1318,7 +1319,7 @@ class Executor:
                         host: {
                             "rc": -1,
                             "stdout": "",
-                            "stderr": f"主机不可达: {detect_result['results'][host].get('error')}",
+                            "stderr": f"Host unreachable: {detect_result['results'][host].get('error')}",
                             "elapsed": "0s",
                             "error_type": "host_unreachable",
                         }
@@ -1331,7 +1332,7 @@ class Executor:
                 if not info.get("error") and not info.get("python_installed")
             ]
             if hosts_need_python:
-                logger.info(f"以下主机需要安装 Python: {hosts_need_python}")
+                logger.info(f"The following hosts need Python installed: {hosts_need_python}")
                 install_result = self.install_python(
                     hosts_need_python,
                     credentials,
@@ -1342,23 +1343,23 @@ class Executor:
                 failed_hosts = []
                 for host, result in install_result["results"].items():
                     if not result.get("installed") and not result.get("skipped"):
-                        logger.error(f"Python 安装失败: {host}")
+                        logger.error(f"Python installation failed: {host}")
                         failed_hosts.append(host)
                 if failed_hosts:
-                    # 构建包含详细安装失败原因的错误信息
+                    # Build error message with detailed installation failure reasons
                     results = {}
                     for host in targets:
-                        error_msg = "Python 安装失败，无法分发文件"
+                        error_msg = "Python installation failed, cannot dispatch files"
                         if host in install_result["results"]:
                             host_result = install_result["results"][host]
                             if "message" in host_result:
-                                error_msg = f"Python 安装失败: {host_result['message']}"
+                                error_msg = f"Python installation failed: {host_result['message']}"
                             if (
                                 "install_output" in host_result
                                 and host_result["install_output"]
                             ):
                                 error_msg += (
-                                    f"\n安装输出: {host_result['install_output']}"
+                                    f"\nInstallation output: {host_result['install_output']}"
                                 )
                         results[host] = {
                             "rc": -1,
@@ -1438,12 +1439,12 @@ class Executor:
                                 0 if results[host]["transferred"] else -1
                             )
                             results[host]["stdout"] = (
-                                f"文件已传输到 {dest}"
+                                f"File transferred to {dest}"
                                 if results[host]["transferred"]
-                                else "文件传输验证失败"
+                                else "File transfer verification failed"
                             )
                         elif "Copy file to destination" in task:
-                            results[host]["stdout"] = f"文件复制成功: {dest}"
+                            results[host]["stdout"] = f"File copied successfully: {dest}"
                 elif event.get("event") in [
                     "runner_on_failed",
                     "runner_on_unreachable",
@@ -1785,7 +1786,7 @@ echo "ELAPSED_TIME:$elapsed"
         """
         playbooks_dir = self.config.playbooks_path
         if not playbooks_dir.exists():
-            logger.warning(f"playbooks 目录不存在: {playbooks_dir}")
+            logger.warning(f"playbooks directory does not exist: {playbooks_dir}")
             return {"playbooks": []}
         playbooks = []
         # 同时遍历.yml和.yaml文件
@@ -1880,7 +1881,7 @@ echo "ELAPSED_TIME:$elapsed"
                         for host in targets
                     },
                 }
-            # 检查哪些主机需要安装Python（只检查可到达的主机）
+            # Check which hosts need Python installation (only check reachable hosts)
             hosts_need_python = [
                 h
                 for h, info in detect_result["results"].items()

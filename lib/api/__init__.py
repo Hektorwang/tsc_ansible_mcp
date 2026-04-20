@@ -4,7 +4,7 @@ from .routes import packages
 
 app = FastAPI()
 
-# 注册路由
+# Register routes
 app.include_router(packages.router)
 
 

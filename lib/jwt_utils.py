@@ -1,7 +1,7 @@
 """
-JWT 工具模块
+JWT utility module.
 
-提供 JWT 生成、验证、密钥管理、记录管理和权限匹配功能
+Provides JWT generation, verification, key management, record management, and permission matching functionality.
 """
 
 import json
@@ -23,7 +23,7 @@ MIN_SECRET_KEY_LENGTH = 32
 
 
 class JWTUtils:
-    """JWT 工具类"""
+    """JWT utility class."""
 
     def __init__(
         self,
@@ -31,12 +31,12 @@ class JWTUtils:
         issued_tokens_file: Path,
         tool_permissions: Dict[str, List[str]],
     ):
-        """初始化 JWT 工具
+        """Initialize JWT utility.
 
         Args:
-            secret_key_file: 密钥文件路径
-            issued_tokens_file: 已签发 JWT 记录文件路径
-            tool_permissions: 角色权限配置
+            secret_key_file: Secret key file path.
+            issued_tokens_file: Issued JWT records file path.
+            tool_permissions: Role permission configuration.
         """
         self.secret_key_file = secret_key_file
         self.issued_tokens_file = issued_tokens_file
@@ -48,51 +48,51 @@ class JWTUtils:
         self._load_issued_tokens()
 
     def _load_or_generate_secret_key(self) -> None:
-        """加载或生成密钥"""
+        """Load or generate secret key."""
         if self.secret_key_file.exists():
             key = self.secret_key_file.read_text().strip()
             if len(key) >= MIN_SECRET_KEY_LENGTH:
                 self.secret_key = key
-                logger.info(f"从文件加载 JWT 密钥: {self.secret_key_file}")
+                logger.info(f"Loaded JWT secret key from file: {self.secret_key_file}")
                 return
             else:
                 logger.warning(
-                    f"密钥长度不足 ({len(key)} < {MIN_SECRET_KEY_LENGTH})，将自动生成新密钥"
+                    f"Secret key length insufficient ({len(key)} < {MIN_SECRET_KEY_LENGTH}), generating new key"
                 )
 
         self.secret_key = self._generate_secret_key()
         self.secret_key_file.parent.mkdir(parents=True, exist_ok=True)
         self.secret_key_file.write_text(self.secret_key)
-        logger.info(f"自动生成 JWT 密钥并保存到: {self.secret_key_file}")
+        logger.info(f"Generated JWT secret key and saved to: {self.secret_key_file}")
 
     def _generate_secret_key(self) -> str:
-        """生成符合长度要求的密钥
+        """Generate secret key meeting length requirements.
 
         Returns:
-            生成的密钥
+            Generated secret key.
         """
         alphabet = string.ascii_letters + string.digits + "-_"
         key = "".join(secrets.choice(alphabet) for _ in range(48))
         return f"sk-jwt-{key}"
 
     def _load_issued_tokens(self) -> None:
-        """加载已签发的 JWT 记录"""
+        """Load issued JWT records."""
         if self.issued_tokens_file.exists():
             try:
                 content = self.issued_tokens_file.read_text()
                 data = json.loads(content)
                 self.issued_tokens = data.get("tokens", [])
-                logger.info(f"加载了 {len(self.issued_tokens)} 个已签发的 JWT 记录")
+                logger.info(f"Loaded {len(self.issued_tokens)} issued JWT records")
             except Exception as e:
-                logger.error(f"加载 JWT 记录失败: {e}")
+                logger.error(f"Failed to load JWT records: {e}")
                 self.issued_tokens = []
         else:
             self.issued_tokens = []
             self._save_issued_tokens()
-            logger.info(f"创建 JWT 记录文件: {self.issued_tokens_file}")
+            logger.info(f"Created JWT records file: {self.issued_tokens_file}")
 
     def _save_issued_tokens(self) -> None:
-        """保存已签发的 JWT 记录"""
+        """Save issued JWT records."""
         self.issued_tokens_file.parent.mkdir(parents=True, exist_ok=True)
         data = {"tokens": self.issued_tokens}
         self.issued_tokens_file.write_text(
@@ -107,17 +107,17 @@ class JWTUtils:
         expires_in: Optional[int] = None,
         description: Optional[str] = None,
     ) -> str:
-        """生成 JWT
+        """Generate JWT.
 
         Args:
-            sub: 用户唯一标识
-            name: 用户名称
-            role: 用户角色
-            expires_in: 过期时间（秒），None 表示永久有效
-            description: JWT 描述
+            sub: User unique identifier.
+            name: User name.
+            role: User role.
+            expires_in: Expiration time (seconds), None means permanent.
+            description: JWT description.
 
         Returns:
-            生成的 JWT 字符串
+            Generated JWT string.
         """
         now = int(time.time())
         payload: Dict[str, Any] = {
@@ -154,7 +154,7 @@ class JWTUtils:
         self._save_issued_tokens()
 
         logger.info(
-            f"生成 JWT: sub={sub}, name={name}, role={role}, expires_in={expires_in}, token已保存"
+            f"Generated JWT: sub={sub}, name={name}, role={role}, expires_in={expires_in}, token saved"
         )
         return token
 
@@ -168,7 +168,7 @@ class JWTUtils:
         verification fails.
         """
         if not self.issued_tokens:
-            logger.warning("JWT 签发记录为空，拒绝验证")
+            logger.warning("JWT issued records are empty, verification denied")
             return False
 
         if any(r.get("token") == token for r in self.issued_tokens):
@@ -188,140 +188,140 @@ class JWTUtils:
             return True
 
         logger.warning(
-            "JWT 签名有效但不在签发记录中，可能已从 jwt_issued_tokens.json 移除"
+            "JWT signature valid but not in issued records, may have been removed from jwt_issued_tokens.json"
         )
         return False
 
     def verify_jwt(self, token: str) -> Optional[Dict[str, Any]]:
-        """验证 JWT
+        """Verify JWT.
 
         Args:
-            token: JWT 字符串
+            token: JWT string.
 
         Returns:
-            验证成功返回 payload，失败返回 None
+            Payload if verification successful, None otherwise.
         """
-        logger.debug(f"开始验证JWT: token长度={len(token)}, token前缀={token[:30]}...")
+        logger.debug(f"Starting JWT verification: token length={len(token)}, token prefix={token[:30]}...")
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[JWT_ALGORITHM])
             if not self._is_token_in_issued_records(token, payload):
                 return None
             logger.debug(
-                f"JWT验证成功: sub={payload.get('sub')}, name={payload.get('name')}, role={payload.get('role')}"
+                f"JWT verification successful: sub={payload.get('sub')}, name={payload.get('name')}, role={payload.get('role')}"
             )
             return payload
         except jwt.ExpiredSignatureError:
-            logger.warning(f"JWT已过期: token={token[:30]}...")
+            logger.warning(f"JWT expired: token={token[:30]}...")
             return None
         except jwt.InvalidTokenError as e:
-            logger.warning(f"JWT验证失败: {e}, token={token[:30]}...")
+            logger.warning(f"JWT verification failed: {e}, token={token[:30]}...")
             return None
 
     def list_issued_tokens(self) -> List[Dict[str, Any]]:
-        """列出所有已签发的 JWT
+        """List all issued JWTs.
 
         Returns:
-            JWT 记录列表
+            JWT records list.
         """
         return self.issued_tokens.copy()
 
     def revoke_jwt(self, jwt_id: str) -> bool:
-        """撤销 JWT
+        """Revoke JWT.
 
         Args:
-            jwt_id: JWT ID
+            jwt_id: JWT ID.
 
         Returns:
-            撤销成功返回 True，未找到返回 False
+            True if revoked successfully, False if not found.
         """
         for i, record in enumerate(self.issued_tokens):
             if record.get("jwt_id") == jwt_id:
                 self.issued_tokens.pop(i)
                 self._save_issued_tokens()
-                logger.info(f"撤销 JWT: {jwt_id}")
+                logger.info(f"Revoked JWT: {jwt_id}")
                 return True
-        logger.warning(f"未找到 JWT: {jwt_id}")
+        logger.warning(f"JWT not found: {jwt_id}")
         return False
 
     def check_permission(self, role: str, tool_name: str) -> bool:
-        """检查角色是否有权限调用工具
+        """Check if role has permission to call tool.
 
         Args:
-            role: 用户角色
-            tool_name: 工具名称
+            role: User role.
+            tool_name: Tool name.
 
         Returns:
-            有权限返回 True，无权限返回 False
+            True if has permission, False otherwise.
         """
-        logger.debug(f"检查权限: role={role}, tool={tool_name}")
+        logger.debug(f"Checking permission: role={role}, tool={tool_name}")
 
         if role not in self.tool_permissions:
             logger.warning(
-                f"未知角色: {role}, 可用角色: {list(self.tool_permissions.keys())}"
+                f"Unknown role: {role}, available roles: {list(self.tool_permissions.keys())}"
             )
             return False
 
         permissions = self.tool_permissions[role]
-        logger.debug(f"角色权限列表: role={role}, permissions={permissions}")
+        logger.debug(f"Role permissions list: role={role}, permissions={permissions}")
 
         for pattern in permissions:
             if self._match_permission(pattern, tool_name):
                 logger.debug(
-                    f"权限匹配成功: role={role}, tool={tool_name}, pattern={pattern}"
+                    f"Permission match successful: role={role}, tool={tool_name}, pattern={pattern}"
                 )
                 return True
 
-        logger.debug(f"权限匹配失败: role={role}, tool={tool_name}, 无匹配的pattern")
+        logger.debug(f"Permission match failed: role={role}, tool={tool_name}, no matching pattern")
         return False
 
     def _match_permission(self, pattern: str, tool_name: str) -> bool:
-        """匹配权限模式
+        """Match permission pattern.
 
         Args:
-            pattern: 权限模式（支持 * 和前缀匹配）
-            tool_name: 工具名称
+            pattern: Permission pattern (supports * and prefix matching).
+            tool_name: Tool name.
 
         Returns:
-            匹配成功返回 True
+            True if matched successfully.
         """
-        logger.debug(f"匹配权限模式: pattern={pattern}, tool={tool_name}")
+        logger.debug(f"Matching permission pattern: pattern={pattern}, tool={tool_name}")
 
         if pattern == "*":
-            logger.debug(f"通配符匹配: pattern={pattern}")
+            logger.debug(f"Wildcard match: pattern={pattern}")
             return True
 
         if pattern.endswith("*"):
             prefix = pattern[:-1]
             matched = tool_name.startswith(prefix)
             logger.debug(
-                f"前缀匹配: pattern={pattern}, prefix={prefix}, matched={matched}"
+                f"Prefix match: pattern={pattern}, prefix={prefix}, matched={matched}"
             )
             return matched
 
         matched = pattern == tool_name
         logger.debug(
-            f"精确匹配: pattern={pattern}, tool={tool_name}, matched={matched}"
+            f"Exact match: pattern={pattern}, tool={tool_name}, matched={matched}"
         )
         return matched
 
     def get_user_permissions(self, role: str) -> List[str]:
-        """获取角色的权限列表
+        """Get permissions list for role.
 
         Args:
-            role: 用户角色
+            role: User role.
 
         Returns:
-            权限列表
+            List of permissions.
         """
         return self.tool_permissions.get(role, [])
 
     def regenerate_secret_key(self) -> str:
-        """重新生成密钥
+        """Regenerate secret key.
 
         Returns:
-            新的密钥
+            New secret key.
         """
         self.secret_key = self._generate_secret_key()
         self.secret_key_file.write_text(self.secret_key)
-        logger.warning("重新生成 JWT 密钥，所有已签发的 JWT 将失效")
+        logger.warning("Regenerated JWT secret key, all issued JWTs will be invalidated")
         return self.secret_key

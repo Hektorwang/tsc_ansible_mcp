@@ -1,7 +1,7 @@
 """
-check_host_status工具模块
+check_host_status tool module
 
-检查主机状态的MCP工具
+MCP tool to check host status
 """
 
 import uuid
@@ -14,7 +14,7 @@ logger = get_logger()
 
 
 def register_check_host_status(server):
-    """注册check_host_status工具"""
+    """Register check_host_status tool"""
 
     @server.mcp.tool(
         name="check_host_status",
@@ -59,7 +59,7 @@ If tsc_tools or tsc_python are not installed on the target hosts, use the bootst
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
 
-        logger.info(f"MCP 工具调用: check_host_status, targets={targets}")
+        logger.info(f"MCP tool call: check_host_status, targets={targets}")
         credentials: Dict[str, Any] = {}
         if user:
             credentials["user"] = user
@@ -75,6 +75,6 @@ If tsc_tools or tsc_python are not installed on the target hosts, use the bootst
             targets, credentials, timeout, task_id
         )
         logger.info(
-            f"MCP 工具响应: check_host_status, task_id={task_id}, result={result}"
+            f"MCP tool response: check_host_status, task_id={task_id}, result={result}"
         )
         return result

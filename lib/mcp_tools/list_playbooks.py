@@ -1,7 +1,7 @@
 """
-list_playbooks工具模块
+list_playbooks tool module
 
-列出可用playbook的MCP工具
+MCP tool to list available playbooks
 """
 
 from typing import Any, Dict
@@ -13,7 +13,7 @@ logger = get_logger()
 
 
 def register_list_playbooks(server):
-    """注册list_playbooks工具"""
+    """Register list_playbooks tool"""
 
     @server.mcp.tool(
         name="list_playbooks",
@@ -37,18 +37,18 @@ def register_list_playbooks(server):
     @require_permission("list_playbooks")
     def list_playbooks() -> Dict[str, Any]:
 
-        logger.info("MCP 工具调用: list_playbooks")
+        logger.info("MCP tool call: list_playbooks")
         try:
             playbooks = server.playbook_scanner.scan_playbooks()
             return {
                 "status": "success",
                 "playbooks": playbooks,
                 "count": len(playbooks),
-                "message": f"共找到 {len(playbooks)} 个 playbook",
+                "message": f"Found {len(playbooks)} playbooks",
             }
         except Exception as e:
-            logger.error(f"获取 playbook 列表失败: {str(e)}")
+            logger.error(f"Failed to get playbook list: {str(e)}")
             return {
                 "status": "error",
-                "message": f"获取 playbook 列表失败: {str(e)}",
+                "message": f"Failed to get playbook list: {str(e)}",
             }

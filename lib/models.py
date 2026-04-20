@@ -1,7 +1,7 @@
 """
-数据模型模块
+Data model module
 
-定义所有请求和响应的数据模型以及数据库模型
+Defines data models for all requests and responses, as well as database models
 """
 
 from typing import Any, Dict, List, Optional
@@ -14,7 +14,7 @@ Base = declarative_base()
 
 
 class Task(Base):
-    """任务模型"""
+    """Task model"""
 
     __tablename__ = "tasks"
 
@@ -28,7 +28,7 @@ class Task(Base):
 
 
 class Context(Base):
-    """上下文模型"""
+    """Context model"""
 
     __tablename__ = "contexts"
 
@@ -47,79 +47,79 @@ class CredentialsModel(BaseModel):
 
 class ShellRequest(BaseModel):
     targets: List[str] = Field(
-        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+        ..., description="List of target host IPs", min_length=1, max_length=100
     )
-    command: str = Field(..., description="命令内容", min_length=1, max_length=1000)
+    command: str = Field(..., description="Command content", min_length=1, max_length=1000)
     credentials: Optional[CredentialsModel] = None
-    timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
+    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
 
 
 class CopyRequest(BaseModel):
     targets: List[str] = Field(
-        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+        ..., description="List of target host IPs", min_length=1, max_length=100
     )
-    src: str = Field(..., description="本地源文件路径", min_length=1, max_length=500)
-    dest: str = Field(..., description="远程目标路径", min_length=1, max_length=500)
+    src: str = Field(..., description="Local source file path", min_length=1, max_length=500)
+    dest: str = Field(..., description="Remote destination path", min_length=1, max_length=500)
     credentials: Optional[CredentialsModel] = None
-    mode: Optional[str] = Field(None, description="文件权限")
-    owner: Optional[str] = Field(None, description="文件所有者")
-    group: Optional[str] = Field(None, description="文件所属组")
-    timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
+    mode: Optional[str] = Field(None, description="File permissions")
+    owner: Optional[str] = Field(None, description="File owner")
+    group: Optional[str] = Field(None, description="File group")
+    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
 
 
 class FetchRequest(BaseModel):
     targets: List[str] = Field(
-        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+        ..., description="List of target host IPs", min_length=1, max_length=100
     )
-    src: str = Field(..., description="远程源文件路径", min_length=1, max_length=500)
-    dest: str = Field(..., description="本地目标目录", min_length=1, max_length=500)
+    src: str = Field(..., description="Remote source file path", min_length=1, max_length=500)
+    dest: str = Field(..., description="Local destination directory", min_length=1, max_length=500)
     credentials: Optional[CredentialsModel] = None
     flat: bool = False
-    timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
+    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
 
 
 class PlaybookRequest(BaseModel):
     playbook: str = Field(
-        ..., description="playbook 文件名或路径", min_length=1, max_length=500
+        ..., description="Playbook filename or path", min_length=1, max_length=500
     )
     targets: List[str] = Field(
-        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+        ..., description="List of target host IPs", min_length=1, max_length=100
     )
     credentials: Optional[CredentialsModel] = None
     extravars: Optional[Dict[str, Any]] = None
-    timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
+    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
 
 
 class HostRequest(BaseModel):
     targets: List[str] = Field(
-        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+        ..., description="List of target host IPs", min_length=1, max_length=100
     )
     credentials: Optional[CredentialsModel] = None
-    timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
+    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
 
 
 class InstallPythonRequest(BaseModel):
     targets: List[str] = Field(
-        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+        ..., description="List of target host IPs", min_length=1, max_length=100
     )
     credentials: Optional[CredentialsModel] = None
-    version: Optional[str] = Field(None, description="版本号")
-    date: Optional[str] = Field(None, description="日期标识")
-    timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
+    version: Optional[str] = Field(None, description="Version number")
+    date: Optional[str] = Field(None, description="Date identifier")
+    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
 
 
 class InstallTscToolsRequest(BaseModel):
     targets: List[str] = Field(
-        ..., description="目标主机 IP 列表", min_length=1, max_length=100
+        ..., description="List of target host IPs", min_length=1, max_length=100
     )
     credentials: Optional[CredentialsModel] = None
-    version: Optional[str] = Field(None, description="版本号")
-    date: Optional[str] = Field(None, description="日期标识")
-    timeout: Optional[int] = Field(None, description="超时时间（秒）", ge=1, le=3600)
+    version: Optional[str] = Field(None, description="Version number")
+    date: Optional[str] = Field(None, description="Date identifier")
+    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
 
 
 class AddInventoryRequest(BaseModel):
-    host: str = Field(..., description="主机 IP 地址", min_length=1, max_length=100)
+    host: str = Field(..., description="Host IP address", min_length=1, max_length=100)
     credentials: Optional[CredentialsModel] = None
 
 
@@ -139,30 +139,30 @@ class ErrorResponse(BaseModel):
 
 
 class SetContextRequest(BaseModel):
-    key: str = Field(..., description="上下文键")
-    value: str = Field(..., description="上下文值")
+    key: str = Field(..., description="Context key")
+    value: str = Field(..., description="Context value")
 
 
 class GetContextRequest(BaseModel):
-    key: str = Field(..., description="上下文键")
+    key: str = Field(..., description="Context key")
 
 
 class DeleteContextRequest(BaseModel):
-    key: str = Field(..., description="上下文键")
+    key: str = Field(..., description="Context key")
 
 
 class GetTaskDetailRequest(BaseModel):
-    task_id: str = Field(..., description="任务 ID")
-    host: str = Field(..., description="主机名")
+    task_id: str = Field(..., description="Task ID")
+    host: str = Field(..., description="Hostname")
 
 
 class GetFailedHostsRequest(BaseModel):
-    task_id: str = Field(..., description="任务 ID")
+    task_id: str = Field(..., description="Task ID")
     limit: int = 20
     offset: int = 0
 
 
 class GetAllResultsRequest(BaseModel):
-    task_id: str = Field(..., description="任务 ID")
+    task_id: str = Field(..., description="Task ID")
     limit: int = 20
     offset: int = 0

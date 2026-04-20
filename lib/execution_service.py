@@ -1,7 +1,7 @@
 """
-执行服务模块
+Execution service module.
 
-封装所有执行逻辑，提供统一的执行接口
+Encapsulates all execution logic, provides unified execution interface.
 """
 
 from typing import Any, Dict, List, Optional
@@ -10,7 +10,7 @@ from lib.error_handler import error_handler
 
 
 class ExecutionService:
-    """执行服务类，封装所有执行逻辑"""
+    """Execution service class, encapsulates all execution logic."""
 
     def __init__(self, executor, task_repo, logger):
         self.executor = executor
@@ -26,7 +26,7 @@ class ExecutionService:
         timeout: Optional[int],
         task_id: str,
     ) -> Dict[str, Any]:
-        """执行 shell 命令"""
+        """Execute shell command."""
         self.task_repo.update(task_id, "running")
         result = self.executor.ansible_shell(
             targets=targets,
@@ -48,7 +48,7 @@ class ExecutionService:
         timeout: Optional[int],
         task_id: str,
     ) -> Dict[str, Any]:
-        """执行 playbook"""
+        """Execute playbook."""
         self.task_repo.update(task_id, "running")
         result = self.executor.run_playbook(
             playbook=playbook,
@@ -69,7 +69,7 @@ class ExecutionService:
         timeout: Optional[int],
         task_id: str,
     ) -> Dict[str, Any]:
-        """检查主机状态"""
+        """Check host status."""
         self.task_repo.update(task_id, "running")
         result = self.executor.check_host_status(
             targets=targets,
@@ -88,7 +88,7 @@ class ExecutionService:
         timeout: Optional[int],
         task_id: str,
     ) -> Dict[str, Any]:
-        """安装 Python"""
+        """Install Python."""
         self.task_repo.update(task_id, "running")
         result = self.executor.install_python(
             targets=targets,
@@ -100,13 +100,13 @@ class ExecutionService:
         for host, r in result.get("results", {}).items():
             if not r.get("installed") and not r.get("skipped"):
                 failed_hosts.append(
-                    {"host": host, "message": r.get("message", "安装失败")}
+                    {"host": host, "message": r.get("message", "Installation failed")}
                 )
         if failed_hosts:
-            result["error"] = "Python 安装失败，请停止后续操作并退出流程"
+            result["error"] = "Python installation failed, please stop subsequent operations and exit the process"
             result["failed_hosts"] = failed_hosts
             result["action_required"] = (
-                "请停止当前流程，向用户报告错误信息，不要继续执行后续操作"
+                "Please stop the current process, report the error information to the user, and do not continue with subsequent operations"
             )
         self.task_repo.update(
             task_id,
@@ -123,7 +123,7 @@ class ExecutionService:
         timeout: Optional[int],
         task_id: str,
     ) -> Dict[str, Any]:
-        """安装 tsc_tools"""
+        """Install tsc_tools."""
         self.task_repo.update(task_id, "running")
         result = self.executor.install_tsc_tools(
             targets=targets,
@@ -135,13 +135,13 @@ class ExecutionService:
         for host, r in result.get("results", {}).items():
             if not r.get("installed") and not r.get("skipped"):
                 failed_hosts.append(
-                    {"host": host, "message": r.get("message", "安装失败")}
+                    {"host": host, "message": r.get("message", "Installation failed")}
                 )
         if failed_hosts:
-            result["error"] = "tsc_tools 安装失败，请停止后续操作并退出流程"
+            result["error"] = "tsc_tools installation failed, please stop subsequent operations and exit the process"
             result["failed_hosts"] = failed_hosts
             result["action_required"] = (
-                "请停止当前流程，向用户报告错误信息，不要继续执行后续操作"
+                "Please stop the current process, report the error information to the user, and do not continue with subsequent operations"
             )
         self.task_repo.update(
             task_id,
@@ -160,7 +160,7 @@ class ExecutionService:
         timeout: Optional[int],
         task_id: str,
     ) -> Dict[str, Any]:
-        """分发文件"""
+        """Distribute file."""
         self.task_repo.update(task_id, "running")
         result = self.executor.ansible_copy(
             targets=targets,
@@ -184,7 +184,7 @@ class ExecutionService:
         timeout: Optional[int],
         task_id: str,
     ) -> Dict[str, Any]:
-        """获取文件"""
+        """Fetch file."""
         self.task_repo.update(task_id, "running")
         result = self.executor.ansible_fetch(
             targets=targets,

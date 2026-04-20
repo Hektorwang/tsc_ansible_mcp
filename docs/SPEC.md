@@ -26,8 +26,7 @@
 - Python code must include **type hints**.
 - A `README.md` file must exist at the project root, describing the project's functionality, installation, configuration, and usage.
 - A `release-note.md` file must exist at the project root to describe version changes. The third line must explicitly state the current version using the format: `## Version=1.5.0` (replace with actual version).
-- A `Dockerfile` must exist at the project root for containerization.
-- A `compose.yml` file must exist for local development environment setup. (Use of `docker-compose.yml` is deprecated).
+- **Containerization** (Optional): If using Docker for deployment, a `Dockerfile` must exist at the project root for containerization. If using Docker Compose for local development, a `compose.yml` file must exist (Use of `docker-compose.yml` is deprecated).
 
 ### 1.3 Prohibitions
 

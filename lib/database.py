@@ -1,7 +1,7 @@
 """
-数据库管理模块
+Database management module.
 
-使用 SQLAlchemy ORM 提供数据库初始化、Session 管理和 TaskRepository 类
+Provides database initialization, Session management, and TaskRepository class using SQLAlchemy ORM.
 """
 
 import json
@@ -20,30 +20,30 @@ logger = get_logger()
 
 
 class Database:
-    """数据库管理类"""
+    """Database management class."""
 
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         db_url = f"sqlite:///{self.db_path}"
-        # 优化 SQLite 并发配置
+        # Optimize SQLite concurrent configuration
         self.engine = create_engine(
             db_url,
             echo=False,
             connect_args={
-                "check_same_thread": False,  # 允许多线程访问
-                "timeout": 30,  # 增加超时时间（秒）
+                "check_same_thread": False,  # Allow multi-threaded access
+                "timeout": 30,  # Increase timeout (seconds)
             },
-            pool_pre_ping=True,  # 检查连接是否有效
-            pool_recycle=3600,  # 每小时回收连接
+            pool_pre_ping=True,  # Check if connection is valid
+            pool_recycle=3600,  # Recycle connections every hour
         )
         self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False)
         self._init_db()
-        logger.info(f"数据库初始化完成: {self.db_path}")
+        logger.info(f"Database initialized: {self.db_path}")
 
     def _init_db(self) -> None:
         Base.metadata.create_all(self.engine)
-        logger.debug("数据库表创建/验证完成")
+        logger.debug("Database table creation/validation completed")
 
     @contextmanager
     def get_session(self):
@@ -59,7 +59,7 @@ class Database:
 
 
 class TaskRepository:
-    """任务仓库类，使用 SQLAlchemy ORM 操作数据库"""
+    """Task repository class using SQLAlchemy ORM for database operations"""
 
     def __init__(self, db: Database):
         self.db = db
@@ -77,7 +77,7 @@ class TaskRepository:
                 updated_at=now,
             )
             session.add(task)
-        logger.info(f"创建任务: {task_id}, 类型: {task_type}")
+        logger.info(f"Created task: {task_id}, type: {task_type}")
 
     def update(
         self, task_id: str, status: str, result: Optional[Dict[str, Any]] = None
@@ -90,13 +90,13 @@ class TaskRepository:
                 task.updated_at = now
                 if result is not None:
                     task.result = json.dumps(result)
-        logger.info(f"更新任务: {task_id}, 状态: {status}")
+        logger.info(f"Updated task: {task_id}, status: {status}")
 
     def get(self, task_id: str) -> Optional[Dict[str, Any]]:
         with self.db.get_session() as session:
             task = session.query(Task).filter(Task.id == task_id).first()
             if not task:
-                logger.debug(f"任务不存在: {task_id}")
+                logger.debug(f"Task not found: {task_id}")
                 return None
             return {
                 "id": task.id,
@@ -132,7 +132,7 @@ class TaskRepository:
                         "updated_at": task.updated_at.isoformat(),
                     }
                 )
-            logger.debug(f"查询任务列表: 状态={status}, 数量={len(result)}")
+            logger.debug(f"Queried task list: status={status}, count={len(result)}")
             return result
 
     def delete(self, task_id: str) -> bool:
@@ -140,7 +140,7 @@ class TaskRepository:
             task = session.query(Task).filter(Task.id == task_id).first()
             if task:
                 session.delete(task)
-                logger.info(f"删除任务: {task_id}")
+                logger.info(f"Deleted task: {task_id}")
                 return True
             return False
 
@@ -152,7 +152,7 @@ class TaskRepository:
             count = (
                 session.query(Task).filter(Task.created_at < cutoff_datetime).delete()
             )
-        logger.info(f"清理过期任务: 删除 {count} 条记录")
+        logger.info(f"Cleaned up expired tasks: deleted {count} records")
         return count
 
     def stats(self) -> Dict[str, int]:
@@ -203,13 +203,13 @@ class TaskRepository:
 
 
 class ContextRepository:
-    """持久化上下文仓库类"""
+    """Persistent context repository class"""
 
     def __init__(self, db: Database):
         self.db = db
 
     def set(self, key: str, value: str) -> None:
-        """设置上下文"""
+        """Set context"""
         now = datetime.now()
         with self.db.get_session() as session:
             context = session.query(Context).filter(Context.key == key).first()
@@ -224,39 +224,39 @@ class ContextRepository:
                     updated_at=now,
                 )
                 session.add(context)
-        logger.info(f"设置上下文: {key} = {value}")
+        logger.info(f"Set context: {key} = {value}")
 
     def get(self, key: str) -> Optional[str]:
-        """获取上下文"""
+        """Get context"""
         with self.db.get_session() as session:
             context = session.query(Context).filter(Context.key == key).first()
             if context:
-                logger.debug(f"获取上下文: {key} = {context.value}")
+                logger.debug(f"Got context: {key} = {context.value}")
                 return context.value
-            logger.debug(f"上下文不存在: {key}")
+            logger.debug(f"Context not found: {key}")
             return None
 
     def delete(self, key: str) -> bool:
-        """删除上下文"""
+        """Delete context"""
         with self.db.get_session() as session:
             context = session.query(Context).filter(Context.key == key).first()
             if context:
                 session.delete(context)
-                logger.info(f"删除上下文: {key}")
+                logger.info(f"Deleted context: {key}")
                 return True
             return False
 
     def list(self) -> Dict[str, str]:
-        """列出所有上下文"""
+        """List all contexts"""
         with self.db.get_session() as session:
             contexts = session.query(Context).all()
             result = {ctx.key: ctx.value for ctx in contexts}
-            logger.debug(f"列出上下文: {len(result)} 条")
+            logger.debug(f"Listed contexts: {len(result)} entries")
             return result
 
     def clear(self) -> int:
-        """清空所有上下文"""
+        """Clear all contexts"""
         with self.db.get_session() as session:
             count = session.query(Context).delete()
-            logger.info(f"清空上下文: 删除 {count} 条")
+            logger.info(f"Cleared contexts: deleted {count} entries")
             return count

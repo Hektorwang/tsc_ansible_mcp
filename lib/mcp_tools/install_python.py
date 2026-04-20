@@ -1,7 +1,7 @@
 """
-install_python工具模块
+install_python tool module
 
-安装Python的MCP工具
+MCP tool to install Python
 """
 
 import uuid
@@ -14,7 +14,7 @@ logger = get_logger()
 
 
 def register_install_python(server):
-    """注册install_python工具"""
+    """Register install_python tool"""
 
     @server.mcp.tool(
         name="install_python",
@@ -58,7 +58,7 @@ def register_install_python(server):
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
 
-        logger.info(f"MCP 工具调用: install_python, targets={targets}")
+        logger.info(f"MCP tool call: install_python, targets={targets}")
         credentials: Dict[str, Any] = {}
         if user:
             credentials["user"] = user
@@ -73,5 +73,5 @@ def register_install_python(server):
         result = server.execution_service.install_python(
             targets, credentials, timeout, task_id
         )
-        logger.info(f"MCP 工具响应: install_python, task_id={task_id}, result={result}")
+        logger.info(f"MCP tool response: install_python, task_id={task_id}, result={result}")
         return result

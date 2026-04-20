@@ -1,7 +1,7 @@
 """
-ansible_copy工具模块
+ansible_copy tool module
 
-分发文件的MCP工具
+MCP tool to copy files
 """
 
 import uuid
@@ -14,7 +14,7 @@ logger = get_logger()
 
 
 def register_ansible_copy(server):
-    """注册ansible_copy工具"""
+    """Register ansible_copy tool"""
 
     @server.mcp.tool(
         name="ansible_copy",
@@ -57,7 +57,7 @@ def register_ansible_copy(server):
     ) -> Dict[str, Any]:
 
         logger.info(
-            f"MCP 工具调用: ansible_copy, targets={targets}, src={src}, dest={dest}"
+            f"MCP tool call: ansible_copy, targets={targets}, src={src}, dest={dest}"
         )
         credentials: Dict[str, Any] = {}
         if user:
@@ -75,5 +75,5 @@ def register_ansible_copy(server):
         result = server.execution_service.ansible_copy(
             targets, src, dest, credentials, timeout, task_id
         )
-        logger.info(f"MCP 工具响应: ansible_copy, task_id={task_id}, result={result}")
+        logger.info(f"MCP tool response: ansible_copy, task_id={task_id}, result={result}")
         return result

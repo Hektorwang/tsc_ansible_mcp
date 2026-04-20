@@ -1,6 +1,6 @@
-"""权限检查装饰器
+"""Permission check decorator.
 
-为 MCP 工具函数提供权限检查装饰器，实现深度防御
+Provides permission check decorator for MCP tool functions, implementing defense in depth.
 """
 
 from functools import wraps
@@ -13,13 +13,13 @@ logger = get_logger()
 
 
 def require_permission(tool_name: str):
-    """权限检查装饰器
+    """Permission check decorator.
 
     Args:
-        tool_name: 工具名称
+        tool_name: Tool name.
 
     Returns:
-        装饰器函数
+        Decorator function.
     """
 
     def decorator(func: Callable) -> Callable:
@@ -27,7 +27,7 @@ def require_permission(tool_name: str):
 
         @wraps(func)
         def wrapper(*args, **kwargs) -> Dict[str, Any]:
-            # 获取 auth 实例
+            # Get auth instance
             try:
                 if not hasattr(Server, "_auth_instance"):
                     logger.warning("Auth instance not initialized")
@@ -38,34 +38,34 @@ def require_permission(tool_name: str):
 
                 auth = Server._auth_instance  # pylint: disable=no-member
 
-                # 认证未启用时放行所有工具
+                # Allow all tools when authentication is disabled
                 if not auth.enabled:
-                    logger.debug(f"认证未启用，放行工具调用: Tool={tool_name}")
+                    logger.debug(f"Authentication disabled, allowing tool call: Tool={tool_name}")
                     return func(*args, **kwargs)
 
                 role = get_current_role()
 
-                # 认证已启用但未设置用户上下文，拒绝访问
+                # Authentication enabled but user context not set, deny access
                 if not role:
-                    logger.warning(f"工具调用失败: 未设置用户上下文, Tool={tool_name}")
+                    logger.warning(f"Tool call failed: User context not set, Tool={tool_name}")
                     return {
                         "status": "error",
                         "message": "Authentication required: user context not set",
                     }
 
-                # 检查权限
+                # Check permission
                 if not auth.jwt_utils.check_permission(role, tool_name):
-                    logger.warning(f"工具调用权限不足: Role={role}, Tool={tool_name}")
+                    logger.warning(f"Insufficient tool permissions: Role={role}, Tool={tool_name}")
                     return {
                         "status": "error",
                         "message": f"Permission denied: role '{role}' cannot access tool '{tool_name}'",
                     }
 
-                # 权限检查通过，执行原函数
+                # Permission check passed, execute original function
                 return func(*args, **kwargs)
 
             except Exception as e:
-                logger.exception(f"权限检查失败: {e}")
+                logger.exception(f"Permission check failed: {e}")
                 return {
                     "status": "error",
                     "message": f"Permission check failed: {str(e)}",
@@ -79,26 +79,26 @@ def require_permission(tool_name: str):
 def check_tool_permission(
     auth_instance: Any, tool_name: str
 ) -> Optional[Dict[str, Any]]:
-    """检查工具调用权限（非装饰器版本）
+    """Check tool call permission (non-decorator version).
 
     Args:
-        auth_instance: 认证实例
-        tool_name: 工具名称
+        auth_instance: Auth instance.
+        tool_name: Tool name.
 
     Returns:
-        如果有权限返回 None，否则返回错误字典
+        None if permission granted, error dictionary otherwise.
     """
     role = get_current_role()
 
     if not role:
-        logger.warning(f"工具调用失败: 未设置用户上下文, Tool={tool_name}")
+        logger.warning(f"Tool call failed: User context not set, Tool={tool_name}")
         return {
             "status": "error",
             "message": "Authentication required: user context not set",
         }
 
     if not auth_instance.jwt_utils.check_permission(role, tool_name):
-        logger.warning(f"工具调用权限不足: Role={role}, Tool={tool_name}")
+        logger.warning(f"Insufficient tool permissions: Role={role}, Tool={tool_name}")
         return {
             "status": "error",
             "message": f"Permission denied: role '{role}' cannot access tool '{tool_name}'",

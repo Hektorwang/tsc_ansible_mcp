@@ -1,5 +1,5 @@
 """
-TSC_ANSIBLE_MCP 库模块
+TSC_ANSIBLE_MCP library module
 """
 
 from lib.config import Config

@@ -1,7 +1,7 @@
 """
-日志管理模块
+Log management module.
 
-封装 loguru 日志库，提供统一的日志配置和使用接口
+Encapsulates loguru logging library, provides unified log configuration and usage interface.
 """
 
 import json
@@ -12,7 +12,7 @@ from loguru import logger
 
 
 class TscLogger:
-    """TSC 日志管理类"""
+    """TSC log management class."""
 
     def __init__(
         self, log_dir: Optional[str] = None, config: Optional[Dict[str, Any]] = None
@@ -24,15 +24,15 @@ class TscLogger:
         self._setup_logger()
 
     def _setup_logger(self):
-        """配置日志"""
-        # 移除所有处理器
+        """Configure logging."""
+        # Remove all handlers
         logger.remove()
         self._logger_handlers = []
 
-        # 从配置获取日志级别
+        # Get log level from config
         log_level = self.config.get("logging.level", "INFO")
 
-        # 从配置获取日志文件配置
+        # Get log file configuration from config
         app_log_file = self.log_dir / "tsc_ansible_mcp.log"
         ansible_log_file = self.log_dir / self.config.get(
             "logging.ansible_execution_log", "ansible_execution.log"
@@ -40,11 +40,11 @@ class TscLogger:
         rotation = self.config.get("logging.ansible_execution_rotation", "50 MB")
         retention = self.config.get("logging.ansible_execution_retention", "30 days")
 
-        # 标准化日志格式
+        # Standardize log format
         file_format = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}"
         console_format = "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}"
 
-        # 添加应用日志文件处理器
+        # Add application log file handler
         app_handler = logger.add(
             app_log_file,
             rotation=rotation,
@@ -55,7 +55,7 @@ class TscLogger:
         )
         self._logger_handlers.append(app_handler)
 
-        # 添加 Ansible 执行日志文件处理器
+        # Add Ansible execution log file handler
         ansible_handler = logger.add(
             ansible_log_file,
             rotation=rotation,
@@ -66,47 +66,47 @@ class TscLogger:
         )
         self._logger_handlers.append(ansible_handler)
 
-        # 添加控制台处理器
+        # Add console handler
         console_handler = logger.add(sink=print, level=log_level, format=console_format)
         self._logger_handlers.append(console_handler)
 
     def update_config(self, config: Dict[str, Any]):
-        """更新日志配置"""
+        """Update log configuration."""
         self.config = config
         self._setup_logger()
-        logger.info("日志配置已更新")
+        logger.info("Log configuration updated")
 
     def get_logger(self):
-        """获取日志实例"""
+        """Get logger instance."""
         return logger
 
     def log_with_context(self, level: str, message: str, **context):
-        """带上下文信息的日志记录"""
+        """Log with context information."""
         context_str = json.dumps(context, ensure_ascii=False)
-        logger.log(level, f"{message} | 上下文: {context_str}")
+        logger.log(level, f"{message} | Context: {context_str}")
 
     def log_task_start(self, task_id: str, task_type: str, **context):
-        """记录任务开始"""
+        """Log task start."""
         self.log_with_context(
-            "INFO", f"任务开始: {task_type}", task_id=task_id, **context
+            "INFO", f"Task started: {task_type}", task_id=task_id, **context
         )
 
     def log_task_end(self, task_id: str, status: str, **context):
-        """记录任务结束"""
-        self.log_with_context("INFO", f"任务结束: {status}", task_id=task_id, **context)
+        """Log task end."""
+        self.log_with_context("INFO", f"Task ended: {status}", task_id=task_id, **context)
 
     def log_task_error(self, task_id: str, error: str, **context):
-        """记录任务错误"""
-        self.log_with_context("ERROR", f"任务错误: {error}", task_id=task_id, **context)
+        """Log task error."""
+        self.log_with_context("ERROR", f"Task error: {error}", task_id=task_id, **context)
 
     def log_performance(self, operation: str, duration: float, **context):
-        """记录性能信息"""
+        """Log performance information."""
         self.log_with_context(
-            "INFO", f"性能指标: {operation} 耗时 {duration:.2f}s", **context
+            "INFO", f"Performance metric: {operation} took {duration:.2f}s", **context
         )
 
 
-# 全局日志实例
+# Global logger instance
 tsc_logger = TscLogger()
 get_logger = tsc_logger.get_logger
 log_with_context = tsc_logger.log_with_context

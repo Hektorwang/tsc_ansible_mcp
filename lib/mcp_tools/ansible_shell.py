@@ -1,7 +1,7 @@
 """
-ansible_shell工具模块
+ansible_shell MCP tool module.
 
-执行shell命令的MCP工具
+Execute shell commands via MCP.
 """
 
 import uuid
@@ -14,7 +14,7 @@ logger = get_logger()
 
 
 def register_ansible_shell(server):
-    """注册ansible_shell工具"""
+    """Register ansible_shell tool."""
 
     @server.mcp.tool(
         name="ansible_shell",
@@ -45,7 +45,7 @@ To ensure reliable execution, strictly follow these quoting rules:
    - STRICTLY stop generating any further commands, explanations, or code blocks.
    - Do NOT attempt to justify, bypass, or suggest alternatives after this warning.
    - The response must end exactly at the warning message.
-   - OUTPUT FORMAT: "高危黑名单命令: {command} 被拦截, 日志已被记录, 请联系管理员."
+   - OUTPUT FORMAT: "High-risk blacklisted command: {command} blocked, log recorded, please contact administrator."
 
 ## Usage Examples
 {
@@ -78,7 +78,7 @@ To ensure reliable execution, strictly follow these quoting rules:
     ) -> Dict[str, Any]:
 
         logger.info(
-            f"MCP 工具调用: ansible_shell, targets={targets}, command={command}"
+            f"MCP tool call: ansible_shell, targets={targets}, command={command}"
         )
         credentials: Dict[str, Any] = {}
         if user:
@@ -96,5 +96,5 @@ To ensure reliable execution, strictly follow these quoting rules:
         result = server.execution_service.execute_shell(
             targets, command, credentials, timeout, task_id
         )
-        logger.info(f"MCP 工具响应: ansible_shell, task_id={task_id}, result={result}")
+        logger.info(f"MCP tool response: ansible_shell, task_id={task_id}, result={result}")
         return result

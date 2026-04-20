@@ -1,7 +1,7 @@
 """
-ansible_fetch工具模块
+ansible_fetch tool module
 
-获取文件的MCP工具
+MCP tool to fetch files
 """
 
 import uuid
@@ -14,7 +14,7 @@ logger = get_logger()
 
 
 def register_ansible_fetch(server):
-    """注册ansible_fetch工具"""
+    """Register ansible_fetch tool"""
 
     @server.mcp.tool(
         name="ansible_fetch",
@@ -59,7 +59,7 @@ def register_ansible_fetch(server):
     ) -> Dict[str, Any]:
 
         logger.info(
-            f"MCP 工具调用: ansible_fetch, targets={targets}, src={src}, dest={dest}"
+            f"MCP tool call: ansible_fetch, targets={targets}, src={src}, dest={dest}"
         )
         credentials: Dict[str, Any] = {}
         if user:
@@ -77,5 +77,5 @@ def register_ansible_fetch(server):
         result = server.execution_service.ansible_fetch(
             targets, src, dest, credentials, flat, timeout, task_id
         )
-        logger.info(f"MCP 工具响应: ansible_fetch, task_id={task_id}, result={result}")
+        logger.info(f"MCP tool response: ansible_fetch, task_id={task_id}, result={result}")
         return result

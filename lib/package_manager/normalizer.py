@@ -1,7 +1,7 @@
 class PackageNormalizer:
-    """包归一化器"""
+    """Package normalizer."""
 
-    # 归一化映射
+    # Normalization mapping
     ARCH_MAPPING = {
         "aarch64": "aarch64",
         "arm64": "aarch64",
@@ -29,9 +29,9 @@ class PackageNormalizer:
     }
 
     def normalize_arch(self, arch: str) -> str:
-        """归一化架构"""
+        """Normalize architecture."""
         return self.ARCH_MAPPING.get(arch.lower(), arch)
 
     def normalize_distro(self, distro: str) -> str:
-        """归一化发行版"""
+        """Normalize distribution."""
         return self.DISTRO_MAPPING.get(distro.lower(), distro)

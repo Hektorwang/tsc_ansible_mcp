@@ -1,7 +1,7 @@
 """
-Playbook 扫描器和动态工具生成器
+Playbook scanner and dynamic tool generator.
 
-负责扫描 playbooks 目录，解析元数据，生成动态工具定义
+Scans playbooks directory, parses metadata, generates dynamic tool definitions.
 """
 
 import json
@@ -16,7 +16,7 @@ logger = get_logger()
 
 
 class PlaybookScanner:
-    """Playbook 扫描器和动态工具生成器"""
+    """Playbook scanner and dynamic tool generator."""
 
     def __init__(self, config: Config):
         self.config = config
@@ -24,13 +24,13 @@ class PlaybookScanner:
         self.playbooks: Dict[str, Dict[str, Any]] = {}
 
     def scan_playbooks(self) -> Dict[str, Dict[str, Any]]:
-        """扫描所有 playbook 文件
+        """Scan all playbook files.
 
         Returns:
-            字典，键为 playbook 名称（不含扩展名），值为元数据
+            Dictionary with playbook name (without extension) as key and metadata as value.
         """
         if not self.playbooks_path.exists():
-            logger.warning(f"playbooks 目录不存在: {self.playbooks_path}")
+            logger.warning(f"Playbooks directory does not exist: {self.playbooks_path}")
             return {}
 
         self.playbooks = {}
@@ -43,14 +43,14 @@ class PlaybookScanner:
             if playbook_file.is_file():
                 self._process_playbook_file(playbook_file)
 
-        logger.info(f"扫描完成，找到 {len(self.playbooks)} 个有效的 playbook")
+        logger.info(f"Scan completed, found {len(self.playbooks)} valid playbooks")
         return self.playbooks
 
     def _process_playbook_file(self, playbook_path: Path) -> None:
-        """处理单个 playbook 文件
+        """Process a single playbook file.
 
         Args:
-            playbook_path: playbook 文件路径
+            playbook_path: Playbook file path.
         """
         playbook_name = playbook_path.stem
         tool_name = f"playbook_{playbook_name}"
@@ -59,20 +59,20 @@ class PlaybookScanner:
         if metadata and metadata.get("description"):
             metadata["tool_name"] = tool_name
             self.playbooks[playbook_name] = metadata
-            logger.info(f"加载 playbook: {playbook_name} -> 工具名: {tool_name}")
+            logger.info(f"Loaded playbook: {playbook_name} -> Tool name: {tool_name}")
         else:
             logger.warning(
-                f"跳过 playbook '{playbook_name}': 缺少必要的元数据（description 字段）"
+                f"Skipped playbook '{playbook_name}': Missing required metadata (description field)"
             )
 
     def parse_metadata(self, playbook_path: Path) -> Optional[Dict[str, Any]]:
-        """解析 playbook 元数据
+        """Parse playbook metadata.
 
         Args:
-            playbook_path: playbook 文件路径
+            playbook_path: Playbook file path.
 
         Returns:
-            元数据字典，解析失败返回 None
+            Metadata dictionary, None if parsing failed.
         """
         metadata: Dict[str, Any] = {
             "name": playbook_path.stem,
@@ -199,19 +199,19 @@ class PlaybookScanner:
                 metadata["description"] = " ".join(description_lines)
 
         except Exception as e:
-            logger.warning(f"解析 playbook 元数据失败: {playbook_path}, 错误: {e}")
+            logger.warning(f"Failed to parse playbook metadata: {playbook_path}, error: {e}")
             return None
 
         return metadata
 
     def _extract_json_metadata(self, content: str) -> Optional[Dict[str, Any]]:
-        """从注释中提取 JSON 格式的元数据
+        """Extract JSON format metadata from comments.
 
         Args:
-            content: playbook 文件内容
+            content: Playbook file content.
 
         Returns:
-            元数据字典，解析失败返回 None
+            Metadata dictionary, None if parsing failed.
         """
         try:
             json_lines = []
@@ -254,20 +254,20 @@ class PlaybookScanner:
             return metadata
 
         except json.JSONDecodeError as e:
-            logger.debug(f"JSON 元数据解析失败: {e}")
+            logger.debug(f"JSON metadata parsing failed: {e}")
             return None
         except Exception as e:
-            logger.debug(f"提取 JSON 元数据失败: {e}")
+            logger.debug(f"Failed to extract JSON metadata: {e}")
             return None
 
     def generate_tool_definition(self, metadata: Dict[str, Any]) -> str:
-        """生成工具描述
+        """Generate tool description.
 
         Args:
-            metadata: playbook 元数据
+            metadata: Playbook metadata.
 
         Returns:
-            工具描述字符串
+            Tool description string.
         """
         description_parts = []
 

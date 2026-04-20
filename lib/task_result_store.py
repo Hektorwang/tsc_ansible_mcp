@@ -1,9 +1,9 @@
 """
-任务结果存储模块
+Task result storage module.
 
-使用混合存储方案：
-- 摘要存 SQLite 数据库
-- 详情存 JSON 文件
+Uses hybrid storage:
+- Summary stored in SQLite database
+- Details stored in JSON files
 """
 
 import json
@@ -17,13 +17,13 @@ logger = get_logger()
 
 
 class TaskResultStore:
-    """任务结果存储管理器
+    """Task result storage manager.
 
-    使用混合存储方案：
-    - 摘要存 SQLite（通过 TaskRepository）
-    - 详情存 JSON 文件
+    Uses hybrid storage:
+    - Summary stored in SQLite (via TaskRepository)
+    - Details stored in JSON files
 
-    存储目录结构：
+    Storage directory structure:
     logs/task_results/
     ├── task_xxx.json
     └── ...
@@ -50,25 +50,25 @@ class TaskResultStore:
 
         self.result_dir = Path(result_dir)
         self.result_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"任务结果存储目录: {self.result_dir}")
+        logger.info(f"Task result storage directory: {self.result_dir}")
 
     def _get_result_path(self, task_id: str) -> Path:
-        """获取结果文件路径
+        """Get result file path.
 
         Args:
-            task_id: 任务 ID
+            task_id: Task ID.
 
         Returns:
-            结果文件路径
+            Result file path.
         """
         return self.result_dir / f"task_{task_id}.json"
 
     def save_result(self, task_id: str, results: Dict[str, Any]) -> None:
-        """保存完整结果到文件
+        """Save full result to file.
 
         Args:
-            task_id: 任务 ID
-            results: 完整结果数据
+            task_id: Task ID.
+            results: Full result data.
         """
         result_path = self._get_result_path(task_id)
 
@@ -81,21 +81,21 @@ class TaskResultStore:
         with result_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-        logger.debug(f"保存任务结果: {result_path}")
+        logger.debug(f"Saved task result: {result_path}")
 
     def get_result(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """获取完整结果
+        """Get full result.
 
         Args:
-            task_id: 任务 ID
+            task_id: Task ID.
 
         Returns:
-            完整结果数据，不存在返回 None
+            Full result data, None if not found.
         """
         result_path = self._get_result_path(task_id)
 
         if not result_path.exists():
-            logger.warning(f"任务结果不存在: {task_id}")
+            logger.warning(f"Task result not found: {task_id}")
             return None
 
         with result_path.open("r", encoding="utf-8") as f:
@@ -104,14 +104,14 @@ class TaskResultStore:
         return data.get("results")
 
     def get_host_result(self, task_id: str, host: str) -> Optional[Dict[str, Any]]:
-        """获取特定主机结果
+        """Get result for specific host.
 
         Args:
-            task_id: 任务 ID
-            host: 主机 IP
+            task_id: Task ID.
+            host: Host IP.
 
         Returns:
-            该主机的执行结果，不存在返回 None
+            Execution result for the host, None if not found.
         """
         results = self.get_result(task_id)
         if results is None:
@@ -123,15 +123,15 @@ class TaskResultStore:
     def get_failed_hosts(
         self, task_id: str, limit: int = 20, offset: int = 0
     ) -> Dict[str, Any]:
-        """获取失败主机结果
+        """Get failed host results.
 
         Args:
-            task_id: 任务 ID
-            limit: 返回数量限制
-            offset: 偏移量
+            task_id: Task ID.
+            limit: Return count limit.
+            offset: Offset.
 
         Returns:
-            失败主机的详细结果
+            Detailed results of failed hosts.
         """
         results = self.get_result(task_id)
         if results is None:
@@ -160,15 +160,15 @@ class TaskResultStore:
     def get_all_results(
         self, task_id: str, limit: int = 20, offset: int = 0
     ) -> Dict[str, Any]:
-        """获取所有主机结果（分页）
+        """Get all host results (paginated).
 
         Args:
-            task_id: 任务 ID
-            limit: 返回数量限制
-            offset: 偏移量
+            task_id: Task ID.
+            limit: Return count limit.
+            offset: Offset.
 
         Returns:
-            主机执行结果
+            Host execution results.
         """
         results = self.get_result(task_id)
         if results is None:
@@ -189,13 +189,13 @@ class TaskResultStore:
         }
 
     def delete_result(self, task_id: str) -> bool:
-        """删除结果文件
+        """Delete result file.
 
         Args:
-            task_id: 任务 ID
+            task_id: Task ID.
 
         Returns:
-            是否删除成功
+            Whether deletion was successful.
         """
         result_path = self._get_result_path(task_id)
 
@@ -203,17 +203,17 @@ class TaskResultStore:
             return False
 
         result_path.unlink()
-        logger.info(f"删除任务结果: {task_id}")
+        logger.info(f"Deleted task result: {task_id}")
         return True
 
     def list_old_results(self, days: int = 7) -> List[str]:
-        """列出指定天数前的结果文件
+        """List result files older than specified days.
 
         Args:
-            days: 天数
+            days: Number of days.
 
         Returns:
-            任务 ID 列表
+            List of task IDs.
         """
         cutoff = datetime.now() - timedelta(days=days)
         old_tasks = []
@@ -229,18 +229,18 @@ class TaskResultStore:
                     if task_id:
                         old_tasks.append(task_id)
             except Exception as e:
-                logger.warning(f"读取结果文件失败: {result_file}, 错误: {e}")
+                logger.warning(f"Failed to read result file: {result_file}, error: {e}")
 
         return old_tasks
 
     def cleanup_old_results(self, days: int = 7) -> int:
-        """清理指定天数前的结果文件
+        """Clean up result files older than specified days.
 
         Args:
-            days: 天数
+            days: Number of days.
 
         Returns:
-            删除的文件数量
+            Number of deleted files.
         """
         old_tasks = self.list_old_results(days)
         deleted = 0
@@ -249,7 +249,7 @@ class TaskResultStore:
             if self.delete_result(task_id):
                 deleted += 1
 
-        logger.info(f"清理了 {deleted} 个旧任务结果")
+        logger.info(f"Cleaned up {deleted} old task results")
         return deleted
 
 

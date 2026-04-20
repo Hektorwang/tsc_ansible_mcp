@@ -1,7 +1,7 @@
 """
-ansible_playbook工具模块
+ansible_playbook tool module
 
-执行playbook的MCP工具
+MCP tool to execute playbooks
 """
 
 import uuid
@@ -14,7 +14,7 @@ logger = get_logger()
 
 
 def register_ansible_playbook(server):
-    """注册ansible_playbook工具"""
+    """Register ansible_playbook tool"""
 
     @server.mcp.tool(
         name="ansible_playbook",
@@ -72,7 +72,7 @@ def register_ansible_playbook(server):
     ) -> Dict[str, Any]:
 
         logger.info(
-            f"MCP 工具调用: ansible_playbook, playbook={playbook}, targets={targets}"
+            f"MCP tool call: ansible_playbook, playbook={playbook}, targets={targets}"
         )
         credentials: Dict[str, Any] = {}
         if user:
@@ -91,6 +91,6 @@ def register_ansible_playbook(server):
             playbook, targets, credentials, extravars, timeout, task_id
         )
         logger.info(
-            f"MCP 工具响应: ansible_playbook, task_id={task_id}, result={result}"
+            f"MCP tool response: ansible_playbook, task_id={task_id}, result={result}"
         )
         return result

@@ -1,7 +1,7 @@
 """
-配置管理模块
+Configuration management module.
 
-加载和管理 tsc_ansible_mcp.toml 配置文件
+Load and manage tsc_ansible_mcp.toml configuration file.
 """
 
 import re
@@ -17,7 +17,7 @@ logger = get_logger()
 
 
 class Config:
-    """配置管理类"""
+    """Configuration management class."""
 
     def __init__(self, config_path: Optional[Path] = None):
         if config_path is None:
@@ -27,11 +27,11 @@ class Config:
         self._data = self._load()
         self._package_cache: Dict[str, Any] = {}
         self._last_modified = self.path.stat().st_mtime if self.path.exists() else 0
-        self._scan_packages()
+        self._scan_packages()  # Scan packages only once during initialization
         self._validate_config()
 
     def _check_for_updates(self) -> bool:
-        """检查配置文件是否有更新"""
+        """Check if configuration file has been updated."""
         if not self.path.exists():
             return False
         current_mtime = self.path.stat().st_mtime
@@ -43,27 +43,62 @@ class Config:
         return False
 
     def _validate_config(self) -> None:
-        """验证配置值的正确性"""
-        # 验证超时设置
+        """Validate configuration values."""
+        # Validate timeout settings
         default_timeout = self.get("mcp.default_timeout", 600)
         max_timeout = self.get("mcp.max_timeout", 3600)
         if default_timeout > max_timeout:
             logger.warning(
-                f"默认超时值 ({default_timeout}) 大于最大超时值 ({max_timeout})，将使用最大超时值"
+                f"Default timeout ({default_timeout}) exceeds max timeout ({max_timeout}), "
+                f"will use max timeout"
             )
 
-        # 验证执行设置
+        # Validate execution settings
         forks = self.get("execution.forks", 10)
         if forks < 1 or forks > 100:
             logger.warning(
-                f"forks 值 ({forks}) 不在合理范围内 (1-100)，将使用默认值 10"
+                f"Forks value ({forks}) is out of reasonable range (1-100), "
+                f"will use default value 10"
             )
 
-        # 验证日志级别
+        # Validate log level
         log_level = self.get("logging.level", "INFO").upper()
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if log_level not in valid_levels:
-            logger.warning(f"日志级别 ({log_level}) 无效，将使用默认值 INFO")
+            logger.warning(f"Invalid log level ({log_level}), will use default INFO")
+
+        # Validate auth settings
+        auth_enabled = self.get("auth.enabled", False)
+        if auth_enabled:
+            # Check JWT secret key file
+            secret_key_file = self.get("auth.jwt_secret_key_file", "etc/jwt_secret_key.txt")
+            if not secret_key_file:
+                logger.warning("JWT secret key file not configured, will use default path")
+
+            # Check JWT issued tokens file
+            issued_tokens_file = self.get("auth.jwt_issued_tokens_file", "etc/jwt_issued_tokens.json")
+            if not issued_tokens_file:
+                logger.warning("JWT issued tokens file not configured, will use default path")
+
+            # Check tool permissions
+            tool_permissions = self.get("auth.tool_permissions", {})
+            if not tool_permissions:
+                logger.warning("Tool permissions not configured, will use default permissions")
+            else:
+                # Validate each role has at least one permission
+                for role, permissions in tool_permissions.items():
+                    if not permissions:
+                        logger.warning(f"Role '{role}' has no permissions configured")
+
+        # Validate playbooks path
+        playbooks_path = self.get("playbooks.path", "playbooks")
+        if not playbooks_path:
+            logger.warning("Playbooks path not configured, will use default 'playbooks'")
+
+        # Validate tsc_repo settings
+        base_url = self.get("tsc_repo.base_url")
+        if base_url and not base_url.startswith(("http://", "https://")):
+            logger.warning(f"Invalid base_url format: {base_url}, should start with http:// or https://")
 
     def _load(self) -> Dict[str, Any]:
         if self.path.exists():
@@ -145,7 +180,7 @@ class Config:
         }
 
     def get(self, key: str, default: Any = None) -> Any:
-        # 检查配置文件是否有更新
+        # Check if configuration file has been updated
         self._check_for_updates()
         keys = key.split(".")
         value = self._data
@@ -310,6 +345,10 @@ class Config:
         return logs_dir / "package_cache.yml"
 
     def _scan_packages(self) -> None:
+        """Scan and cache available packages from local repository.
+        
+        This method runs only once during initialization to build package cache.
+        """
         self._package_cache = {"tsc_python": {}, "tsc_tools": {}}
         local_path = Path(self.nginx_local_path)
 
@@ -401,9 +440,9 @@ class Config:
         if key in self._package_cache.get("tsc_python", {}):
             return self._package_cache["tsc_python"][key]["url"]
 
-        logger.warning(f"缓存中未找到 {key}，使用默认 URL")
+        logger.warning(f"Package not found in cache: {key}, using default URL")
         logger.warning(
-            f"可用的缓存键: {list(self._package_cache.get('tsc_python', {}).keys())}"
+            f"Available cache keys: {list(self._package_cache.get('tsc_python', {}).keys())}"
         )
 
         url_path = self.tsc_python_url_template.format(
@@ -430,17 +469,17 @@ class Config:
         return f"{self.nginx_base_url}{url_path}"
 
     def is_high_risk_command(self, command: str) -> bool:
-        """检查命令是否为高危命令
+        """Check if command is a high-risk command
 
-        增强的高危命令检查，支持：
-        1. 检测完整路径（如 /usr/bin/rm）
-        2. 检测命令参数中的高危操作
-        3. 检测管道和重定向等复杂命令
-        4. 检测常见的绕过技巧
+        Enhanced high-risk command checking supports:
+        1. Detecting full paths (e.g., /usr/bin/rm)
+        2. Detecting high-risk operations in command arguments
+        3. Detecting complex commands with pipes and redirections
+        4. Detecting common bypass techniques
         """
         command_lower = command.strip().lower()
 
-        # 常见的高危命令列表
+        # List of common high-risk commands
         high_risk_cmds = [
             "rm",
             "unlink",
@@ -456,25 +495,25 @@ class Config:
             "shred",
         ]
 
-        # 从配置中获取高危命令列表
+        # Get high-risk command list from configuration
         config_risk_cmds = self.high_risk_commands
         if config_risk_cmds:
             high_risk_cmds.extend(config_risk_cmds)
 
-        # 检查命令是否包含高危命令
+        # Check if command contains high-risk commands
         for risk_cmd in high_risk_cmds:
-            # 检查完整路径（如 /usr/bin/rm）
+            # Check full path (e.g., /usr/bin/rm)
             if f"/{risk_cmd}" in command_lower:
                 return True
 
-            # 检查命令部分（如 rm）
+            # Check command part (e.g., rm)
             cmd_parts = command_lower.split()
             if risk_cmd in cmd_parts:
                 return True
 
-            # 检查管道和重定向中的命令
+            # Check commands in pipes and redirections
             if "|" in command_lower or ">" in command_lower or "<" in command_lower:
-                # 分割命令并检查每个部分
+                # Split command and check each part
                 parts = (
                     command_lower.split("|")
                     + command_lower.split(">")
@@ -530,5 +569,5 @@ class Config:
         return self.execution_settings.get("result_store_dir", "logs/task_results")
 
 
-# 创建全局配置实例
+# Create global configuration instance
 settings = Config()

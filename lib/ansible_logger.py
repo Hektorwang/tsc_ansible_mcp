@@ -1,7 +1,7 @@
 """
-Ansible 执行详细日志记录模块
+Ansible execution detailed logging module.
 
-使用 loguru 记录 ansible 执行的完整详细信息
+Uses loguru to record complete detailed information of ansible execution.
 """
 
 import json
@@ -14,13 +14,13 @@ from loguru import logger
 
 
 class AnsibleExecutionLogger:
-    """Ansible 执行详细日志记录器
+    """Ansible execution detailed logging.
 
-    使用 loguru 记录 ansible 执行的完整详细信息，包括：
-    - 执行开始时的 playbook、inventory、参数
-    - 执行过程中的每个事件
-    - 执行结果汇总
-    - 执行错误详情
+    Uses loguru to record complete detailed information of ansible execution, including:
+    - Playbook, inventory, parameters at execution start
+    - Each event during execution
+    - Execution result summary
+    - Execution error details
     """
 
     _instance: Optional["AnsibleExecutionLogger"] = None
@@ -43,7 +43,7 @@ class AnsibleExecutionLogger:
             self._setup_from_config(config)
 
     def _setup_from_config(self, config: Any) -> None:
-        """从配置对象设置日志参数"""
+        """Set log parameters from config object."""
         self.enabled = config.get("logging.ansible_execution_enabled", True)
         if not self.enabled:
             return
@@ -64,7 +64,7 @@ class AnsibleExecutionLogger:
         self._setup_logger()
 
     def _setup_logger(self) -> None:
-        """设置 loguru 日志记录器"""
+        """Set up loguru logger."""
         if not self.log_file:
             return
 
@@ -80,7 +80,7 @@ class AnsibleExecutionLogger:
         )
 
     def _log(self, level: str, message: str) -> None:
-        """内部日志方法"""
+        """Internal log method."""
         if not self.enabled:
             return
         logger.bind(ansible_execution=True).log(level, message)
@@ -94,15 +94,15 @@ class AnsibleExecutionLogger:
         extravars: Optional[Dict[str, Any]] = None,
         user: Optional[str] = None,
     ) -> None:
-        """记录执行开始
+        """Log execution start.
 
         Args:
-            task_id: 任务 ID
-            playbook: Playbook 内容
-            inventory: Inventory 内容
-            timeout: 超时时间
-            extravars: 额外变量
-            user: 用户名
+            task_id: Task ID.
+            playbook: Playbook content.
+            inventory: Inventory content.
+            timeout: Timeout.
+            extravars: Extra variables.
+            user: Username.
         """
         if not self.enabled:
             return
@@ -143,14 +143,14 @@ class AnsibleExecutionLogger:
         task_name: str,
         result: Dict[str, Any],
     ) -> None:
-        """记录执行事件
+        """Log execution event.
 
         Args:
-            task_id: 任务 ID
-            event_type: 事件类型
-            host: 主机名
-            task_name: 任务名
-            result: 执行结果
+            task_id: Task ID.
+            event_type: Event type.
+            host: Host name.
+            task_name: Task name.
+            result: Execution result.
         """
         if not self.enabled:
             return
@@ -204,13 +204,13 @@ class AnsibleExecutionLogger:
         summary: Dict[str, Any],
         elapsed: float,
     ) -> None:
-        """记录执行结果汇总
+        """Log execution result summary.
 
         Args:
-            task_id: 任务 ID
-            status: 执行状态
-            summary: 结果汇总
-            elapsed: 耗时
+            task_id: Task ID.
+            status: Execution status.
+            summary: Result summary.
+            elapsed: Elapsed time.
         """
         if not self.enabled:
             return
@@ -233,12 +233,12 @@ class AnsibleExecutionLogger:
         error: str,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """记录执行错误详情
+        """Log execution error details.
 
         Args:
-            task_id: 任务 ID
-            error: 错误信息
-            details: 错误详情
+            task_id: Task ID.
+            error: Error message.
+            details: Error details.
         """
         if not self.enabled:
             return

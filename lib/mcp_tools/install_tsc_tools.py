@@ -1,7 +1,7 @@
 """
-install_tsc_tools工具模块
+install_tsc_tools tool module
 
-安装tsc_tools的MCP工具
+MCP tool to install tsc_tools
 """
 
 import uuid
@@ -14,7 +14,7 @@ logger = get_logger()
 
 
 def register_install_tsc_tools(server):
-    """注册install_tsc_tools工具"""
+    """Register install_tsc_tools tool"""
 
     @server.mcp.tool(
         name="install_tsc_tools",
@@ -57,7 +57,7 @@ def register_install_tsc_tools(server):
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
 
-        logger.info(f"MCP 工具调用: install_tsc_tools, targets={targets}")
+        logger.info(f"MCP tool call: install_tsc_tools, targets={targets}")
         credentials: Dict[str, Any] = {}
         if user:
             credentials["user"] = user
@@ -73,6 +73,6 @@ def register_install_tsc_tools(server):
             targets, credentials, timeout, task_id
         )
         logger.info(
-            f"MCP 工具响应: install_tsc_tools, task_id={task_id}, result={result}"
+            f"MCP tool response: install_tsc_tools, task_id={task_id}, result={result}"
         )
         return result

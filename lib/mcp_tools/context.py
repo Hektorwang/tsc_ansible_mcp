@@ -1,7 +1,6 @@
-"""
-context工具模块
+"""Context tools module.
 
-上下文相关的MCP工具
+Context-related MCP tools for session data persistence.
 """
 
 from typing import Any, Dict
@@ -12,65 +11,99 @@ from lib.tsc_logger import get_logger
 logger = get_logger()
 
 
-def register_context_tools(server):
-    """注册上下文相关工具"""
+def register_context_tools(server) -> None:
+    """Register context-related tools.
+
+    Args:
+        server: Server instance to register tools with.
+    """
 
     @server.mcp.tool(
         name="set_context",
-        description="设置上下文键值对。用于在会话间持久化存储数据，例如保存配置、状态信息等。",
+        description="Set a context key-value pair. Used for persisting data across sessions, such as saving configurations or state information.",
     )
     @require_permission("set_context")
     def set_context(key: str, value: str) -> Dict[str, str]:
+        """Set a context key-value pair.
 
-        logger.info(f"MCP 工具调用: set_context, key={key}")
+        Args:
+            key: Context key.
+            value: Context value.
+
+        Returns:
+            Dict[str, str]: Operation result.
+        """
+        logger.info(f"MCP tool call: set_context, key={key}")
         server.context_repo.set(key, value)
         return {"status": "success", "key": key, "value": value}
 
     @server.mcp.tool(
         name="get_context",
-        description="获取上下文值。通过键名获取之前存储的上下文数据。",
+        description="Get a context value by key. Retrieves previously stored context data.",
     )
     @require_permission("get_context")
     def get_context(key: str) -> Dict[str, Any]:
+        """Get a context value by key.
 
-        logger.info(f"MCP 工具调用: get_context, key={key}")
+        Args:
+            key: Context key to retrieve.
+
+        Returns:
+            Dict[str, Any]: Context value or error message.
+        """
+        logger.info(f"MCP tool call: get_context, key={key}")
         value = server.context_repo.get(key)
         if value is not None:
             return {"status": "success", "key": key, "value": value}
         else:
-            return {"status": "error", "message": f"上下文键 '{key}' 不存在"}
+            return {"status": "error", "message": f"Context key '{key}' not found"}
 
     @server.mcp.tool(
         name="delete_context",
-        description="删除指定的上下文键值对。",
+        description="Delete a specific context key-value pair.",
     )
     @require_permission("delete_context")
     def delete_context(key: str) -> Dict[str, Any]:
+        """Delete a context key-value pair.
 
-        logger.info(f"MCP 工具调用: delete_context, key={key}")
+        Args:
+            key: Context key to delete.
+
+        Returns:
+            Dict[str, Any]: Operation result.
+        """
+        logger.info(f"MCP tool call: delete_context, key={key}")
         if server.context_repo.delete(key):
-            return {"status": "success", "message": f"已删除上下文键: {key}"}
+            return {"status": "success", "message": f"Deleted context key: {key}"}
         else:
-            return {"status": "error", "message": f"上下文键 '{key}' 不存在"}
+            return {"status": "error", "message": f"Context key '{key}' not found"}
 
     @server.mcp.tool(
         name="list_contexts",
-        description="列出所有上下文键值对。返回当前存储的所有上下文数据。",
+        description="List all context key-value pairs. Returns all currently stored context data.",
     )
     @require_permission("list_contexts")
     def list_contexts() -> Dict[str, Any]:
+        """List all context key-value pairs.
 
-        logger.info("MCP 工具调用: list_contexts")
+        Returns:
+            Dict[str, Any]: All context data.
+        """
+        logger.info("MCP tool call: list_contexts")
         contexts = server.context_repo.list()
         return {"status": "success", "contexts": contexts, "count": len(contexts)}
 
     @server.mcp.tool(
         name="clear_contexts",
-        description="清空所有上下文数据。谨慎使用，此操作不可恢复。",
+        description="Clear all context data. Use with caution as this operation is irreversible.",
     )
     @require_permission("clear_contexts")
     def clear_contexts() -> Dict[str, Any]:
+        """Clear all context data.
 
-        logger.info("MCP 工具调用: clear_contexts")
+        Returns:
+            Dict[str, Any]: Operation result with count of deleted items.
+        """
+        logger.info("MCP tool call: clear_contexts")
         count = server.context_repo.clear()
-        return {"status": "success", "message": f"已清空 {count} 条上下文数据"}
+        return {"status": "success", "message": f"Cleared {count} context items"}

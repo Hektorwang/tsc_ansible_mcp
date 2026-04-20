@@ -1,7 +1,7 @@
 """
-任务结果工具模块
+Task results tool module
 
-查询任务执行结果的MCP工具
+MCP tool to query task execution results
 """
 
 from typing import Any, Dict, Optional
@@ -13,11 +13,11 @@ logger = get_logger()
 
 
 def register_task_results_tools(server):
-    """注册任务结果相关工具"""
+    """Register task results related tools"""
 
     @server.mcp.tool(
         name="get_task_detail",
-        description="查询特定主机在指定任务中的执行详情。当执行结果返回摘要信息时，使用此工具获取特定主机的详细执行结果。",
+        description="Query execution details for a specific host in a specified task. Use this tool to get detailed execution results for a specific host when the execution result returns summary information.",
     )
     @require_permission("get_task_detail")
     def get_task_detail(
@@ -25,7 +25,7 @@ def register_task_results_tools(server):
         host: str,
     ) -> Dict[str, Any]:
 
-        logger.info(f"MCP 工具调用: get_task_detail, task_id={task_id}, host={host}")
+        logger.info(f"MCP tool call: get_task_detail, task_id={task_id}, host={host}")
         from lib.task_result_store import task_result_store
 
         result = task_result_store.get_host_result(task_id, host)
@@ -34,7 +34,7 @@ def register_task_results_tools(server):
                 "task_id": task_id,
                 "host": host,
                 "status": "not_found",
-                "message": f"任务 {task_id} 不存在或主机 {host} 无结果",
+                "message": f"Task {task_id} not found or no results for host {host}",
             }
 
         return {
@@ -46,7 +46,7 @@ def register_task_results_tools(server):
 
     @server.mcp.tool(
         name="get_failed_hosts",
-        description="查询指定任务中所有失败主机的详情。当执行结果包含失败主机时，使用此工具获取失败主机的详细错误信息。",
+        description="Query details of all failed hosts in a specified task. Use this tool to get detailed error information for failed hosts when the execution result contains failed hosts.",
     )
     @require_permission("get_failed_hosts")
     def get_failed_hosts(
@@ -55,14 +55,14 @@ def register_task_results_tools(server):
         offset: int = 0,
     ) -> Dict[str, Any]:
 
-        logger.info(f"MCP 工具调用: get_failed_hosts, task_id={task_id}")
+        logger.info(f"MCP tool call: get_failed_hosts, task_id={task_id}")
         from lib.task_result_store import task_result_store
 
         return task_result_store.get_failed_hosts(task_id, limit, offset)
 
     @server.mcp.tool(
         name="get_all_results",
-        description="分页查询指定任务的所有主机执行结果。当需要查看所有主机的执行结果时，使用此工具进行分页查询。",
+        description="Paginate and query execution results for all hosts in a specified task. Use this tool for paginated queries when you need to view execution results for all hosts.",
     )
     @require_permission("get_all_results")
     def get_all_results(
@@ -71,7 +71,7 @@ def register_task_results_tools(server):
         offset: int = 0,
     ) -> Dict[str, Any]:
 
-        logger.info(f"MCP 工具调用: get_all_results, task_id={task_id}")
+        logger.info(f"MCP tool call: get_all_results, task_id={task_id}")
         from lib.task_result_store import task_result_store
 
         return task_result_store.get_all_results(task_id, limit, offset)
