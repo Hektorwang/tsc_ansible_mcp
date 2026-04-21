@@ -98,26 +98,6 @@ class HostRequest(BaseModel):
     timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
 
 
-class InstallPythonRequest(BaseModel):
-    targets: List[str] = Field(
-        ..., description="List of target host IPs", min_length=1, max_length=100
-    )
-    credentials: Optional[CredentialsModel] = None
-    version: Optional[str] = Field(None, description="Version number")
-    date: Optional[str] = Field(None, description="Date identifier")
-    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
-
-
-class InstallTscToolsRequest(BaseModel):
-    targets: List[str] = Field(
-        ..., description="List of target host IPs", min_length=1, max_length=100
-    )
-    credentials: Optional[CredentialsModel] = None
-    version: Optional[str] = Field(None, description="Version number")
-    date: Optional[str] = Field(None, description="Date identifier")
-    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
-
-
 class AddInventoryRequest(BaseModel):
     host: str = Field(..., description="Host IP address", min_length=1, max_length=100)
     credentials: Optional[CredentialsModel] = None

@@ -1,5 +1,38 @@
 # Release Notes
 
+## Version=1.12.1
+
+2026-04-22
+
+### Bug 修复
+
+#### 1. 包版本排序问题修复
+
+修复了包管理器中使用字符串字典序排序版本号，导致 beta10 被错误识别为比 beta9 旧的问题。
+
+**问题原因：**
+- `lib/package_manager/scanner.py` 中 `get_latest_package()` 方法使用字符串比较排序版本
+- 字典序比较时，`"beta9" > "beta10"` 因为 `'9' > '1'`
+- 导致 `/api/v1/packages/download` 接口返回旧版本 beta9 而非最新 beta10
+
+**修复内容：**
+- 引入 `packaging.version.parse` 进行语义化版本比较
+- 将字符串排序替换为语义化版本排序
+- 正确识别 `beta10 > beta9`、`rc > beta`、`正式版 > 预发布版`
+
+**影响范围：**
+- `GET /api/v1/packages/download` - 现在正确返回最新版本
+- `GET /api/v1/packages/list/{pkg_type}` - 列表顺序正确
+
+### 测试验证
+
+- ✅ beta10 正确识别为比 beta9 新
+- ✅ 正式版正确识别为比预发布版新
+- ✅ rc 正确识别为比 beta 新
+- ✅ 现有 7 个包管理器测试全部通过
+
+---
+
 ## Version=1.12.0
 
 2026-04-16

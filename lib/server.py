@@ -32,17 +32,10 @@ from lib.models import (
     AddInventoryRequest,
     CopyRequest,
     CredentialsModel,
-    DeleteContextRequest,
-    ErrorResponse,
     FetchRequest,
-    GetContextRequest,
     HostRequest,
-    InstallPythonRequest,
-    InstallTscToolsRequest,
     PlaybookRequest,
-    SetContextRequest,
     ShellRequest,
-    TaskResponse,
 )
 
 
@@ -58,19 +51,14 @@ Built on Ansible, supporting batch operations on multiple hosts.
 
 ## Core Features
 1. **Host Status Check** - Check architecture, distribution, tsc_tools, and tsc_python(a pre-compiled python3 environment) installation status
-2. **Software Installation** - Install tsc_tools toolkit and tsc_python environment
+2. **Software Installation** - Install tsc_tools and tsc_python(python3) via playbook_bootstrap_tsc_environment
 3. **Command Execution** - Execute shell commands on remote hosts
 4. **File Operations** - File distribution and retrieval
 5. **Playbook Execution** - Run Ansible playbooks
 
-## Important: Installation Order
-When bootstraping runtime envionment, you must follow this order, do not reverse:
-1. **Install tsc_tools first** - Call install_tsc_tools
-2. **Then install tsc_python** - Call install_python
-
 ## Recommended Workflow
 1. Call check_host_status to check host status
-2. If tsc_tools or tsc_python is not installed -> Call bootstrap_tsc_environment, it will install tsc_tools and tsc_python
+2. If tsc_tools or tsc_python is not installed -> Call playbook_bootstrap_tsc_environment to install both
 3. After successful installation -> Perform other operations
 
 ## Important Note
@@ -86,7 +74,7 @@ Supports both password and private key SSH authentication:
 # 1. Check host status
 check_host_status(targets=["192.168.1.1"], user="root", password="xxx")
 
-# 2. Install tsc_tools and tsc_python (recommended)
+# 2. Bootstrap environment (install tsc_tools and tsc_python)
 playbook_bootstrap_tsc_environment(targets=["192.168.1.1"], user="root", password="xxx")
 
 # 3. Execute command
@@ -267,40 +255,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 task_id, "check_host_status", {"targets": request.targets}
             )
             result = self.execution_service.check_host_status(
-                targets=request.targets,
-                timeout=request.timeout,
-                task_id=task_id,
-            )
-            return result
-
-        @app.post("/api/v1/hosts/python/install", summary="Install Python")
-        @error_handler
-        async def install_python(
-            request: InstallPythonRequest,
-            user_info: Dict[str, Any] = Depends(self.auth.verify_request),
-        ) -> Dict[str, Any]:
-            task_id = str(uuid.uuid4())
-            self.task_repo.create(
-                task_id, "install_python", {"targets": request.targets}
-            )
-            result = self.execution_service.install_python(
-                targets=request.targets,
-                timeout=request.timeout,
-                task_id=task_id,
-            )
-            return result
-
-        @app.post("/api/v1/hosts/tsc_tools/install", summary="Install tsc_tools")
-        @error_handler
-        async def install_tsc_tools(
-            request: InstallTscToolsRequest,
-            user_info: Dict[str, Any] = Depends(self.auth.verify_request),
-        ) -> Dict[str, Any]:
-            task_id = str(uuid.uuid4())
-            self.task_repo.create(
-                task_id, "install_tsc_tools", {"targets": request.targets}
-            )
-            result = self.execution_service.install_tsc_tools(
                 targets=request.targets,
                 timeout=request.timeout,
                 task_id=task_id,

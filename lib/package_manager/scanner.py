@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from packaging.version import parse as parse_version
+
 
 class PackageScanner:
     """Package scanner for scanning and caching installation packages.
@@ -84,8 +86,11 @@ class PackageScanner:
         if not filtered:
             return None
 
-        # Sort by version (version is typically in the second field)
-        filtered.sort(key=lambda x: self._extract_version(x["filename"]), reverse=True)
+        # Sort by version using semantic versioning comparison
+        filtered.sort(
+            key=lambda x: parse_version(self._extract_version(x["filename"])),
+            reverse=True,
+        )
         return filtered[0]
 
     def _matches_criteria(

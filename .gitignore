@@ -10,7 +10,7 @@ __pycache__
 /retries/*
 /sample
 /tmp/*
-/tsc_install
+/tsc_install/*
 etc/jwt_issued_tokens.json
 etc/jwt_secret_key.txt
 etc/tokens.txt

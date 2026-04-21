@@ -792,434 +792,6 @@ class Executor:
                 logger.warning(f"Host {host} unreachable, skipping operation")
         return results, detect_result
 
-    def install_python(
-        self,
-        targets: List[str],
-        timeout: Optional[int] = None,
-        task_id: Optional[str] = None,
-        detect_result: Optional[Dict[str, Any]] = None,
-        skip_lock: bool = False,
-    ) -> Dict[str, Any]:
-        logger.info(f"Installing Python: {targets}")
-        results, detect_result = self._check_hosts_reachability(
-            targets,
-            timeout,
-            detect_result=detect_result,
-            skip_lock=skip_lock,
-        )
-
-        hosts_need_install = [h for h in targets if h not in results]
-        if not hosts_need_install:
-            final_task_id = task_id or str(uuid.uuid4())
-            total = len(results)
-            error_count = len(results)
-            return {
-                "task_id": final_task_id,
-                "status": "failed" if error_count == total else "partial_success",
-                "summary": {
-                    "total": total,
-                    "installed": 0,
-                    "skipped": 0,
-                    "failed": error_count,
-                },
-                "results": results,
-            }
-        inventory = self._build_inventory(hosts_need_install)
-        python_path = "/home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3"
-        idempotency_check_playbook = [
-            {
-                "name": "Check tsc_python installation",
-                "hosts": "all",
-                "gather_facts": False,
-                "serial": self.config.execution_serial,
-                "tasks": [
-                    {
-                        "name": "Check tsc_python",
-                        "ansible.builtin.raw": f"if test -x {python_path}; then {python_path} --version 2>/dev/null && echo 'installed'; else echo 'not_installed'; fi",
-                        "register": "python_check",
-                        "changed_when": False,
-                        "failed_when": False,
-                    },
-                ],
-            }
-        ]
-        check_result, check_events = self._run_ansible(
-            idempotency_check_playbook, inventory, timeout
-        )
-        hosts_need_install = []
-        for event in check_events:
-            if event.get("event") == "runner_on_ok":
-                event_data = event.get("event_data", {})
-                host = event_data.get("host", "")
-                task = event_data.get("task", "")
-                res = event_data.get("res", {})
-                if host in results:
-                    continue
-                if "Check tsc_python" in task:
-                    stdout = res.get("stdout", "").strip()
-                    if "installed" in stdout and "not_installed" not in stdout:
-                        results[host] = {
-                            "installed": True,
-                            "skipped": True,
-                            "message": "tsc_python already installed",
-                            "python_version": stdout.replace("installed", "").strip(),
-                            "python_path": python_path,
-                        }
-                        logger.info(f"Host {host} tsc_python already installed, skipping")
-                    else:
-                        hosts_need_install.append(host)
-            elif event.get("event") in ["runner_on_failed", "runner_on_unreachable"]:
-                event_data = event.get("event_data", {})
-                host = event_data.get("host", "")
-                if host in results:
-                    continue
-                hosts_need_install.append(host)
-        if not hosts_need_install:
-            final_task_id = task_id or str(uuid.uuid4())
-            total = len(results)
-            skipped_count = sum(1 for r in results.values() if r.get("skipped"))
-            installed_count = sum(1 for r in results.values() if r.get("installed"))
-            error_count = total - installed_count - skipped_count
-            return {
-                "task_id": final_task_id,
-                "status": "success" if error_count == 0 else "partial_success",
-                "summary": {
-                    "total": total,
-                    "installed": installed_count,
-                    "skipped": skipped_count,
-                    "failed": error_count,
-                },
-                "results": results,
-            }
-        install_tasks = []
-        for host in hosts_need_install:
-            env_info = detect_result["results"][host]
-            arch = env_info.get("arch", "x86_64")
-            distro = env_info.get("distro", "redhat")
-            if not arch or not distro:
-                results[host] = {
-                    "installed": False,
-                    "skipped": False,
-                    "message": f"Failed to get host architecture or distribution info: arch={arch}, distro={distro}",
-                    "error": "environment_detection_failed",
-                }
-                logger.error(
-                    f"Host {host} failed to get environment info: arch={arch}, distro={distro}"
-                )
-                continue
-            install_url = self.config.get_python_install_url(distro, arch)
-            logger.info(
-                f"Host {host} installation info: arch={arch}, distro={distro}, url={install_url}"
-            )
-            install_tasks.append(
-                {
-                    "name": f"Install Python on {host}",
-                    "ansible.builtin.raw": f"mkdir -p /tmp/tsc_python && curl -sSL {install_url} -o /tmp/tsc_python/install.sh && chmod +x /tmp/tsc_python/install.sh && /tmp/tsc_python/install.sh >/dev/null; rm -rf /tmp/tsc_python",
-                    "when": f"inventory_hostname == '{host}'",
-                    "register": f"install_result_{host.replace('.', '_')}",
-                    "failed_when": False,
-                }
-            )
-        playbook = [
-            {
-                "name": "Install Python",
-                "hosts": "all",
-                "gather_facts": False,
-                "serial": self.config.execution_serial,
-                "tasks": install_tasks
-                + [
-                    {
-                        "name": "Verify Python installation",
-                        "ansible.builtin.raw": "/home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3 --version",
-                        "register": "verify_result",
-                        "failed_when": False,
-                    },
-                ],
-            }
-        ]
-        result, install_events = self._run_ansible(playbook, inventory, timeout)
-        install_output = {}
-        for event in install_events:
-            if event.get("event") == "runner_on_ok":
-                event_data = event.get("event_data", {})
-                host = event_data.get("host", "")
-                task = event_data.get("task", "")
-                res = event_data.get("res", {})
-                if host and "Install Python on" in task:
-                    output = res.get("stdout", "") + res.get("stderr", "")
-                    install_output[host] = output
-            elif event.get("event") == "runner_on_failed":
-                event_data = event.get("event_data", {})
-                host = event_data.get("host", "")
-                task = event_data.get("task", "")
-                res = event_data.get("res", {})
-                if host and "Install Python on" in task:
-                    output = (
-                        res.get("stdout", "")
-                        + res.get("stderr", "")
-                        + res.get("msg", "")
-                    )
-                    install_output[host] = output
-        for host in hosts_need_install:
-            host_result = {
-                "installed": False,
-                "message": "",
-                "elapsed": "0s",
-                "install_output": install_output.get(host, ""),
-            }
-            for event in install_events:
-                if event.get("event") == "runner_on_ok":
-                    event_data = event.get("event_data", {})
-                    if event_data.get("host") == host:
-                        task = event_data.get("task", "")
-                        if "Verify Python" in task:
-                            res = event_data.get("res", {})
-                            host_result["installed"] = res.get("rc", -1) == 0
-                            host_result["python_version"] = res.get(
-                                "stdout", ""
-                            ).strip()
-                            if host_result["installed"]:
-                                python_path = "/home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3"
-                                self.inventory_manager.update_python_interpreter(
-                                    host, python_path
-                                )
-                elif event.get("event") in [
-                    "runner_on_failed",
-                    "runner_on_unreachable",
-                ]:
-                    event_data = event.get("event_data", {})
-                    if event_data.get("host") == host:
-                        res = event_data.get("res", {})
-                        task = event_data.get("task", "")
-                        if "Install Python on" in task:
-                            host_result["message"] = "Installation script execution failed"
-                            host_result["install_output"] = (
-                                res.get("stdout", "")
-                                + res.get("stderr", "")
-                                + res.get("msg", "")
-                            )
-                        else:
-                            host_result["message"] = res.get("msg", "Installation failed")
-                            host_result["install_output"] = res.get("msg", "")
-            results[host] = host_result
-
-        final_task_id = task_id or str(uuid.uuid4())
-        task_result_store.save_result(final_task_id, {"results": results, "elapsed": 0})
-
-        total = len(results)
-        installed_count = sum(1 for r in results.values() if r.get("installed"))
-        skipped_count = sum(1 for r in results.values() if r.get("skipped"))
-        failed_count = total - installed_count - skipped_count
-
-        return {
-            "task_id": final_task_id,
-            "status": "success" if failed_count == 0 else "partial_success",
-            "summary": {
-                "total": total,
-                "installed": installed_count,
-                "skipped": skipped_count,
-                "failed": failed_count,
-            },
-            "results": results,
-        }
-
-    def install_tsc_tools(
-        self,
-        targets: List[str],
-        timeout: Optional[int] = None,
-        task_id: Optional[str] = None,
-        detect_result: Optional[Dict[str, Any]] = None,
-        skip_lock: bool = False,
-    ) -> Dict[str, Any]:
-        logger.info(f"Installing tsc_tools: {targets}")
-        results, detect_result = self._check_hosts_reachability(
-            targets,
-            timeout,
-            detect_result=detect_result,
-            skip_lock=skip_lock,
-        )
-        hosts_need_check = [h for h in targets if h not in results]
-        if not hosts_need_check:
-            final_task_id = task_id or str(uuid.uuid4())
-            total = len(results)
-            error_count = len(results)
-            return {
-                "task_id": final_task_id,
-                "status": "failed" if error_count == total else "partial_success",
-                "summary": {
-                    "total": total,
-                    "installed": 0,
-                    "skipped": 0,
-                    "failed": error_count,
-                },
-                "results": results,
-            }
-        install_path = self.config.tsc_tools_install_path
-        inventory = self._build_inventory(hosts_need_check)
-        playbook = [
-            {
-                "name": "Check tsc_tools installation",
-                "hosts": "all",
-                "gather_facts": False,
-                "serial": self.config.execution_serial,
-                "tasks": [
-                    {
-                        "name": "Check tsc_tools installation",
-                        "ansible.builtin.raw": f"if test -d {install_path}/ && test -f {install_path}/release-note.md; then echo 'installed'; else echo 'not_installed'; fi",
-                        "register": "install_check",
-                        "changed_when": False,
-                        "failed_when": False,
-                    },
-                ],
-            }
-        ]
-        check_result, check_events = self._run_ansible(playbook, inventory, timeout)
-        hosts_need_install = []
-        for host in hosts_need_check:
-            if host not in results:
-                results[host] = {"installed": False, "skipped": False, "message": ""}
-        for event in check_events:
-            if event.get("event") == "runner_on_ok":
-                event_data = event.get("event_data", {})
-                host = event_data.get("host", "")
-                task = event_data.get("task", "")
-                res = event_data.get("res", {})
-                if host in results:
-                    if "Check tsc_tools installation" in task:
-                        stdout = res.get("stdout", "").strip()
-                        if stdout == "installed":
-                            results[host]["skipped"] = True
-                            results[host]["message"] = "tsc_tools already installed"
-        for host in hosts_need_check:
-            if not results[host]["skipped"]:
-                hosts_need_install.append(host)
-        if not hosts_need_install:
-            final_task_id = task_id or str(uuid.uuid4())
-            total = len(results)
-            skipped_count = sum(1 for r in results.values() if r.get("skipped"))
-            installed_count = sum(1 for r in results.values() if r.get("installed"))
-            error_count = total - installed_count - skipped_count
-            return {
-                "task_id": final_task_id,
-                "status": "success" if error_count == 0 else "partial_success",
-                "summary": {
-                    "total": total,
-                    "installed": installed_count,
-                    "skipped": skipped_count,
-                    "failed": error_count,
-                },
-                "results": results,
-            }
-        install_url = self.config.get_tsc_tools_install_url()
-        logger.info(f"Installing tsc_tools, url={install_url}")
-        install_playbook = [
-            {
-                "name": "Install tsc_tools",
-                "hosts": "all",
-                "gather_facts": False,
-                "serial": self.config.execution_serial,
-                "tasks": [
-                    {
-                        "name": "Download and install tsc_tools",
-                        "ansible.builtin.raw": f"mkdir -p /tmp/tsc_tools && curl -sSL {install_url} -o /tmp/tsc_tools/install.sh && chmod +x /tmp/tsc_tools/install.sh && /tmp/tsc_tools/install.sh >/dev/null; rm -rf /tmp/tsc_tools",
-                        "register": "install_result",
-                        "failed_when": False,
-                    },
-                    {
-                        "name": "Verify tsc_tools installation",
-                        "ansible.builtin.raw": f"test -d {install_path}/ && test -f {install_path}/release-note.md && echo 'success' || echo 'failed'",
-                        "register": "verify_result",
-                        "failed_when": False,
-                    },
-                ],
-            }
-        ]
-        install_inventory = self._build_inventory(hosts_need_install)
-        result, install_events = self._run_ansible(
-            install_playbook, install_inventory, timeout
-        )
-        install_output = {}
-        for event in install_events:
-            if event.get("event") == "runner_on_ok":
-                event_data = event.get("event_data", {})
-                host = event_data.get("host", "")
-                task = event_data.get("task", "")
-                res = event_data.get("res", {})
-                if host and "Download and install tsc_tools" in task:
-                    output = res.get("stdout", "") + res.get("stderr", "")
-                    install_output[host] = output
-            elif event.get("event") == "runner_on_failed":
-                event_data = event.get("event_data", {})
-                host = event_data.get("host", "")
-                task = event_data.get("task", "")
-                res = event_data.get("res", {})
-                if host and "Download and install tsc_tools" in task:
-                    output = (
-                        res.get("stdout", "")
-                        + res.get("stderr", "")
-                        + res.get("msg", "")
-                    )
-                    install_output[host] = output
-        for host in hosts_need_install:
-            host_result = {
-                "installed": False,
-                "message": "",
-                "elapsed": "0s",
-                "install_output": install_output.get(host, ""),
-            }
-            for event in install_events:
-                if event.get("event") == "runner_on_ok":
-                    event_data = event.get("event_data", {})
-                    if event_data.get("host") == host:
-                        task = event_data.get("task", "")
-                        res = event_data.get("res", {})
-                        if "Verify tsc_tools" in task:
-                            stdout = res.get("stdout", "").strip()
-                            host_result["installed"] = stdout == "success"
-                            if host_result["installed"]:
-                                host_result["message"] = "tsc_tools installed successfully"
-                            else:
-                                host_result["message"] = "tsc_tools installation verification failed"
-                elif event.get("event") in [
-                    "runner_on_failed",
-                    "runner_on_unreachable",
-                ]:
-                    event_data = event.get("event_data", {})
-                    if event_data.get("host") == host:
-                        res = event_data.get("res", {})
-                        task = event_data.get("task", "")
-                        if "Download and install tsc_tools" in task:
-                            host_result["message"] = "Installation script execution failed"
-                            host_result["install_output"] = (
-                                res.get("stdout", "")
-                                + res.get("stderr", "")
-                                + res.get("msg", "")
-                            )
-                        else:
-                            host_result["message"] = res.get("msg", "Installation failed")
-                            host_result["install_output"] = res.get("msg", "")
-            results[host] = host_result
-
-        final_task_id = task_id or str(uuid.uuid4())
-        task_result_store.save_result(final_task_id, {"results": results, "elapsed": 0})
-
-        total = len(results)
-        installed_count = sum(1 for r in results.values() if r.get("installed"))
-        skipped_count = sum(1 for r in results.values() if r.get("skipped"))
-        failed_count = total - installed_count - skipped_count
-
-        return {
-            "task_id": final_task_id,
-            "status": "success" if failed_count == 0 else "partial_success",
-            "summary": {
-                "total": total,
-                "installed": installed_count,
-                "skipped": skipped_count,
-                "failed": failed_count,
-            },
-            "results": results,
-        }
-
     def ansible_copy(
         self,
         targets: List[str],
@@ -1303,51 +875,35 @@ class Executor:
                 if not info.get("error") and not info.get("python_installed")
             ]
             if hosts_need_python:
-                logger.info(f"The following hosts need Python installed: {hosts_need_python}")
-                install_result = self.install_python(
-                    hosts_need_python,
-                    timeout=timeout,
-                    detect_result=detect_result,
-                    skip_lock=True,
-                )
-                failed_hosts = []
-                for host, result in install_result["results"].items():
-                    if not result.get("installed") and not result.get("skipped"):
-                        logger.error(f"Python installation failed: {host}")
-                        failed_hosts.append(host)
-                if failed_hosts:
-                    # Build error message with detailed installation failure reasons
-                    results = {}
-                    for host in targets:
-                        error_msg = "Python installation failed, cannot dispatch files"
-                        if host in install_result["results"]:
-                            host_result = install_result["results"][host]
-                            if "message" in host_result:
-                                error_msg = f"Python installation failed: {host_result['message']}"
-                            if (
-                                "install_output" in host_result
-                                and host_result["install_output"]
-                            ):
-                                error_msg += (
-                                    f"\nInstallation output: {host_result['install_output']}"
-                                )
+                logger.warning(f"The following hosts need Python installed: {hosts_need_python}")
+                results = {}
+                for host in targets:
+                    error_msg = "tsc_python is not installed on this host. Please run playbook_bootstrap_tsc_environment first to install the required environment."
+                    if host in hosts_need_python:
                         results[host] = {
                             "rc": -1,
                             "stdout": "",
                             "stderr": error_msg,
                             "elapsed": "0s",
-                            "error_type": "python_install_failed",
+                            "error_type": "python_not_installed",
                         }
-                    return {
-                        "task_id": task_id or str(uuid.uuid4()),
-                        "status": "failed",
-                        "summary": {
-                            "total": len(targets),
-                            "success": 0,
-                            "failed": len(targets),
-                        },
-                        "results": results,
-                    }
+                    else:
+                        results[host] = {
+                            "rc": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "elapsed": "0s",
+                        }
+                return {
+                    "task_id": task_id or str(uuid.uuid4()),
+                    "status": "failed",
+                    "summary": {
+                        "total": len(targets),
+                        "success": len(targets) - len(hosts_need_python),
+                        "failed": len(hosts_need_python),
+                    },
+                    "results": results,
+                }
             inventory = self._build_inventory(targets)
             playbook = [
                 {
@@ -1522,51 +1078,35 @@ class Executor:
                 if not info.get("error") and not info.get("python_installed")
             ]
             if hosts_need_python:
-                logger.info(f"以下主机需要安装 Python: {hosts_need_python}")
-                install_result = self.install_python(
-                    hosts_need_python,
-                    timeout=timeout,
-                    detect_result=detect_result,
-                    skip_lock=True,
-                )
-                failed_hosts = []
-                for host, result in install_result["results"].items():
-                    if not result.get("installed") and not result.get("skipped"):
-                        logger.error(f"Python 安装失败: {host}")
-                        failed_hosts.append(host)
-                if failed_hosts:
-                    # 构建包含详细安装失败原因的错误信息
-                    results = {}
-                    for host in targets:
-                        error_msg = "Python 安装失败，无法执行命令"
-                        if host in install_result["results"]:
-                            host_result = install_result["results"][host]
-                            if "message" in host_result:
-                                error_msg = f"Python 安装失败: {host_result['message']}"
-                            if (
-                                "install_output" in host_result
-                                and host_result["install_output"]
-                            ):
-                                error_msg += (
-                                    f"\n安装输出: {host_result['install_output']}"
-                                )
+                logger.warning(f"以下主机需要安装 Python: {hosts_need_python}")
+                results = {}
+                for host in targets:
+                    error_msg = "tsc_python is not installed on this host. Please run playbook_bootstrap_tsc_environment first to install the required environment."
+                    if host in hosts_need_python:
                         results[host] = {
                             "rc": -1,
                             "stdout": "",
                             "stderr": error_msg,
                             "elapsed": "0s",
-                            "error_type": "python_install_failed",
+                            "error_type": "python_not_installed",
                         }
-                    return {
-                        "task_id": task_id or str(uuid.uuid4()),
-                        "status": "failed",
-                        "summary": {
-                            "total": len(targets),
-                            "success": 0,
-                            "failed": len(targets),
-                        },
-                        "results": results,
-                    }
+                    else:
+                        results[host] = {
+                            "rc": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "elapsed": "0s",
+                        }
+                return {
+                    "task_id": task_id or str(uuid.uuid4()),
+                    "status": "failed",
+                    "summary": {
+                        "total": len(targets),
+                        "success": len(targets) - len(hosts_need_python),
+                        "failed": len(hosts_need_python),
+                    },
+                    "results": results,
+                }
 
             inventory = self._build_inventory(targets)
             playbook = [
@@ -1862,51 +1402,35 @@ class Executor:
                 if h in reachable_hosts and not info.get("python_installed")
             ]
             if hosts_need_python:
-                logger.info(f"以下主机需要安装 Python: {hosts_need_python}")
-                install_result = self.install_python(
-                    hosts_need_python,
-                    timeout=timeout,
-                    detect_result=detect_result,
-                    skip_lock=True,
-                )
-                failed_hosts = []
-                for host, result in install_result["results"].items():
-                    if not result.get("installed") and not result.get("skipped"):
-                        logger.error(f"Python 安装失败: {host}")
-                        failed_hosts.append(host)
-                if failed_hosts:
-                    # 构建包含详细安装失败原因的错误信息
-                    results = {}
-                    for host in targets:
-                        error_msg = "Python 安装失败，无法执行 playbook"
-                        if host in install_result["results"]:
-                            host_result = install_result["results"][host]
-                            if "message" in host_result:
-                                error_msg = f"Python 安装失败: {host_result['message']}"
-                            if (
-                                "install_output" in host_result
-                                and host_result["install_output"]
-                            ):
-                                error_msg += (
-                                    f"\n安装输出: {host_result['install_output']}"
-                                )
+                logger.warning(f"以下主机需要安装 Python: {hosts_need_python}")
+                results = {}
+                for host in targets:
+                    error_msg = "tsc_python is not installed on this host. Please run playbook_bootstrap_tsc_environment first to install the required environment."
+                    if host in hosts_need_python:
                         results[host] = {
                             "rc": -1,
                             "stdout": "",
                             "stderr": error_msg,
                             "elapsed": "0s",
-                            "error_type": "python_install_failed",
+                            "error_type": "python_not_installed",
                         }
-                    return {
-                        "task_id": str(uuid.uuid4()),
-                        "status": "failed",
-                        "summary": {
-                            "total": len(targets),
-                            "success": 0,
-                            "failed": len(targets),
-                        },
-                        "results": results,
-                    }
+                    else:
+                        results[host] = {
+                            "rc": 0,
+                            "stdout": "",
+                            "stderr": "",
+                            "elapsed": "0s",
+                        }
+                return {
+                    "task_id": str(uuid.uuid4()),
+                    "status": "failed",
+                    "summary": {
+                        "total": len(targets),
+                        "success": len(targets) - len(hosts_need_python),
+                        "failed": len(hosts_need_python),
+                    },
+                    "results": results,
+                }
             final_task_id = task_id or str(uuid.uuid4())
             self._current_task_task_id = final_task_id
             
@@ -2022,34 +1546,11 @@ class Executor:
                 if not info.get("error") and not info.get("python_installed")
             ]
             if hosts_need_python:
-                logger.info(f"以下主机需要安装 Python: {hosts_need_python}")
-                install_result = self.install_python(
-                    hosts_need_python,
-                    timeout=timeout,
-                    detect_result=detect_result,
-                    skip_lock=True,
-                )
-                failed_hosts = []
-                for host, result in install_result["results"].items():
-                    if not result.get("installed") and not result.get("skipped"):
-                        logger.error(f"Python 安装失败: {host}")
-                        failed_hosts.append(host)
-                if failed_hosts:
-                    # 构建包含详细安装失败原因的错误信息
-                    results = {}
-                    for host in targets:
-                        error_msg = "Python 安装失败，无法获取文件"
-                        if host in install_result["results"]:
-                            host_result = install_result["results"][host]
-                            if "message" in host_result:
-                                error_msg = f"Python 安装失败: {host_result['message']}"
-                            if (
-                                "install_output" in host_result
-                                and host_result["install_output"]
-                            ):
-                                error_msg += (
-                                    f"\n安装输出: {host_result['install_output']}"
-                                )
+                logger.warning(f"以下主机需要安装 Python: {hosts_need_python}")
+                results = {}
+                for host in targets:
+                    error_msg = "tsc_python is not installed on this host. Please run playbook_bootstrap_tsc_environment first to install the required environment."
+                    if host in hosts_need_python:
                         results[host] = {
                             "rc": -1,
                             "dest": "",
@@ -2057,18 +1558,27 @@ class Executor:
                             "changed": False,
                             "stderr": error_msg,
                             "elapsed": "0s",
-                            "error_type": "python_install_failed",
+                            "error_type": "python_not_installed",
                         }
-                    return {
-                        "task_id": task_id or str(uuid.uuid4()),
-                        "status": "failed",
-                        "summary": {
-                            "total": len(targets),
-                            "success": 0,
-                            "failed": len(targets),
-                        },
-                        "results": results,
-                    }
+                    else:
+                        results[host] = {
+                            "rc": 0,
+                            "dest": "",
+                            "checksum": "",
+                            "changed": False,
+                            "stderr": "",
+                            "elapsed": "0s",
+                        }
+                return {
+                    "task_id": task_id or str(uuid.uuid4()),
+                    "status": "failed",
+                    "summary": {
+                        "total": len(targets),
+                        "success": len(targets) - len(hosts_need_python),
+                        "failed": len(hosts_need_python),
+                    },
+                    "results": results,
+                }
             inventory = self._build_inventory(targets)
             playbook = [
                 {
