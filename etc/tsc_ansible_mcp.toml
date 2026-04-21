@@ -1,10 +1,9 @@
 # TSC_ANSIBLE_MCP 配置文件
 [tsc_repo]
-base_url = "http://192.168.19.22/tsc_install"
-local_path = "/home/tsc/tsc_ansible_mcp/tsc_install"
+local_path = "/home/workspace/tsc_ansible_mcp/tsc_install"
 
 [auth]
-enabled = true
+enabled = false
 jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
 jwt_secret_key_file = "etc/jwt_secret_key.txt"
 
@@ -12,9 +11,13 @@ jwt_secret_key_file = "etc/jwt_secret_key.txt"
 admin = ["*"]
 user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
 
+[debug]
+enabled = true
+cache_dir = "logs/debug"
+
 [mcp]
 default_timeout = 600
-host = "0.0.0.0"
+host = "192.168.3.252"
 max_timeout = 3600
 mcp_version = "1.12.0"
 path = "/mcp"
@@ -76,4 +79,3 @@ level = "DEBUG"
 [ssh]
 base_args = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ForwardX11=no -o GSSAPIAuthentication=no -o VerifyHostKeyDNS=no -o ControlMaster=auto -o ControlPath=/tmp/ansible-ssh-%h-%p-%r -o ControlPersist=60 -o ConnectTimeout=30"
 password_args = "-o PreferredAuthentications=password -o PubkeyAuthentication=no"
-

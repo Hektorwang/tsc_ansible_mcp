@@ -7,8 +7,6 @@ __pycache__
 /.vscode
 /dev_tools
 /galaxy_cache
-/logs/*
-/pylintrc
 /retries/*
 /sample
 /tmp/*

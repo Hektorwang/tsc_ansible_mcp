@@ -18,59 +18,39 @@ def register_install_tsc_tools(server):
 
     @server.mcp.tool(
         name="install_tsc_tools",
-        description="""
-# Task: Install tsc_tools Environment
+        description="""Install tsc_tools environment on target hosts.
 
-## Workflow
+## Prerequisites
+- Target hosts must be configured in inventory.yml first.
 
-- Check host status (verify if tsc_tools is installed)
-- If tsc_tools is not installed, install tsc_tools
+## Parameters
+- targets (required): List of target hostnames or IPs.
+- timeout (optional): Execution timeout in seconds.
 
-## Tool Calls
+## Return Value
+Returns installation results for each host including installed status and any errors.
 
-```json
-{
-  "name": "install_tsc_tools",
-  "arguments": {
-    "targets": ["host1.example.com"],
-    "password": "my_psw", //Optional
-    "private_key": "path_to_key_file", //Optional
-    "timeout": 600, //Optional
-    "user": "admin", 
-    "port": 22 //Optional
-  }
-}
-```
 ## Decision Logic
-
 - If tsc_tools is already installed → Skip installation
-- If tsc_tools is not installed, → Execute install_tsc_tools
+- If tsc_tools is not installed → Execute installation
+
+## Usage Example
+{
+  "targets": ["web-server-01", "db-server-02"]
+}
 """,
     )
     @require_permission("install_tsc_tools")
     def install_tsc_tools(
         targets: List[str],
-        user: Optional[str] = None,
-        port: Optional[int] = None,
-        password: Optional[str] = None,
-        private_key: Optional[str] = None,
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
 
         logger.info(f"MCP tool call: install_tsc_tools, targets={targets}")
-        credentials: Dict[str, Any] = {}
-        if user:
-            credentials["user"] = user
-        if port:
-            credentials["port"] = port
-        if password:
-            credentials["password"] = password
-        if private_key:
-            credentials["private_key"] = private_key
         task_id = str(uuid.uuid4())
         server.task_repo.create(task_id, "install_tsc_tools", {"targets": targets})
         result = server.execution_service.install_tsc_tools(
-            targets, credentials, timeout, task_id
+            targets, timeout, task_id
         )
         logger.info(
             f"MCP tool response: install_tsc_tools, task_id={task_id}, result={result}"

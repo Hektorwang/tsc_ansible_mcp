@@ -18,31 +18,29 @@ def register_ansible_fetch(server):
 
     @server.mcp.tool(
         name="ansible_fetch",
-        description="""
-# Task: Fetch Files from Target Hosts
+        description="""Fetch files from remote hosts to local machine. Returns complete results (rc, stdout, stderr) for each host.
 
-## Workflow
+## Prerequisites
+- Target hosts must be configured in inventory.yml first.
+- The tool auto-installs Python3 if missing on target hosts.
 
-- Fetch files from remote hosts to local
+## Parameters
+- targets (required): List of target hostnames or IPs.
+- src (required): Remote file path to fetch from.
+- dest (required): Local directory path to save to.
+- flat (optional): If true, save files without host directory structure (default: false).
+- timeout (optional): Execution timeout in seconds.
 
-## Tool Calls
+## Return Value
+Returns complete execution results including rc, stdout, and stderr for each host.
 
-```json
+## Usage Example
 {
-  "name": "ansible_fetch",
-  "arguments": {
-    "targets": ["host1.example.com"],
-    "src": "/path/to/remote/file",
-    "dest": "/path/to/local/directory",
-    "flat": false, //Optional, default false
-    "password": "my_psw", //Optional
-    "private_key": "path_to_key_file", //Optional
-    "timeout": 600, //Optional
-    "user": "admin", 
-    "port": 22 //Optional
-  }
+  "targets": ["web-server-01"],
+  "src": "/var/log/nginx/access.log",
+  "dest": "/tmp/logs/",
+  "flat": true
 }
-```
 """,
     )
     @require_permission("ansible_fetch")
@@ -51,31 +49,18 @@ def register_ansible_fetch(server):
         src: str,
         dest: str,
         flat: bool = False,
-        user: Optional[str] = None,
-        port: Optional[int] = None,
-        password: Optional[str] = None,
-        private_key: Optional[str] = None,
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
 
         logger.info(
             f"MCP tool call: ansible_fetch, targets={targets}, src={src}, dest={dest}"
         )
-        credentials: Dict[str, Any] = {}
-        if user:
-            credentials["user"] = user
-        if port:
-            credentials["port"] = port
-        if password:
-            credentials["password"] = password
-        if private_key:
-            credentials["private_key"] = private_key
         task_id = str(uuid.uuid4())
         server.task_repo.create(
             task_id, "ansible_fetch", {"targets": targets, "src": src, "dest": dest}
         )
         result = server.execution_service.ansible_fetch(
-            targets, src, dest, credentials, flat, timeout, task_id
+            targets, src, dest, flat, timeout, task_id
         )
         logger.info(f"MCP tool response: ansible_fetch, task_id={task_id}, result={result}")
         return result

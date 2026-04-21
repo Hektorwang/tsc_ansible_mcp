@@ -18,61 +18,34 @@ def register_check_host_status(server):
 
     @server.mcp.tool(
         name="check_host_status",
-        description="""
-# Task: Check Host Status
+        description="""Check host architecture, distribution, tsc_tools and tsc_python installation status.
 
-## Workflow
+## Prerequisites
+- Target hosts must be configured in inventory.yml first.
 
-- Check host architecture
-- Check host distribution
-- Check tsc_tools installation status
-- Check tsc_python installation status
+## Return Value
+Returns detection results for each host including architecture, distribution, and installation status of tsc_tools and tsc_python.
 
-## Important Note
-
-If tsc_tools or tsc_python are not installed on the target hosts, use the bootstrap_tsc_environment playbook tool to install them.
-
-## Tool Calls
-
-```json
+## Usage Example
 {
-  "name": "check_host_status",
-  "arguments": {
-    "targets": ["host1.example.com"],
-    "password": "my_psw", //Optional
-    "private_key": "path_to_key_file", //Optional
-    "timeout": 600, //Optional
-    "user": "admin", 
-    "port": 22 //Optional
-  }
+  "targets": ["web-server-01", "db-server-02"]
 }
-```
+
+## Note
+If tsc_tools or tsc_python are not installed, use the bootstrap_tsc_environment playbook to install them.
 """,
     )
     @require_permission("check_host_status")
     def check_host_status(
         targets: List[str],
-        user: Optional[str] = None,
-        port: Optional[int] = None,
-        password: Optional[str] = None,
-        private_key: Optional[str] = None,
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
 
         logger.info(f"MCP tool call: check_host_status, targets={targets}")
-        credentials: Dict[str, Any] = {}
-        if user:
-            credentials["user"] = user
-        if port:
-            credentials["port"] = port
-        if password:
-            credentials["password"] = password
-        if private_key:
-            credentials["private_key"] = private_key
         task_id = str(uuid.uuid4())
         server.task_repo.create(task_id, "check_host_status", {"targets": targets})
         result = server.execution_service.check_host_status(
-            targets, credentials, timeout, task_id
+            targets, timeout, task_id
         )
         logger.info(
             f"MCP tool response: check_host_status, task_id={task_id}, result={result}"

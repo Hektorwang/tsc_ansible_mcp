@@ -36,6 +36,7 @@ class Executor:
         self._active_hosts: set = set()
         self._lock = threading.Lock()
         self._current_task_hosts: List[str] = []
+        self._current_task_task_id: Optional[str] = None
         self._original_signal_handler: dict = {}
         self._install_signal_handlers()
 
@@ -97,6 +98,30 @@ class Executor:
                 f"[LOCK] _release_hosts done: released={released_hosts}, skipped={skipped_hosts}, remaining_active={list(self._active_hosts)}"
             )
 
+    def _cache_debug_file(self, filename: str, data: Any) -> None:
+        """Cache debug files when DEBUG mode is enabled.
+
+        Args:
+            filename: Name of the file to cache.
+            data: Data to write to the file.
+        """
+        if not self.config.debug_enabled:
+            return
+
+        cache_dir = self.config.debug_cache_dir
+        if not self._current_task_task_id:
+            return
+
+        target_dir = cache_dir / self._current_task_task_id
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        file_path = target_dir / filename
+        if isinstance(data, (dict, list)):
+            file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        else:
+            file_path.write_text(str(data), encoding="utf-8")
+        logger.debug(f"Debug cache saved: {file_path}")
+
     def _install_signal_handlers(self):
         """Install signal handlers to ensure locks are released."""
 
@@ -151,26 +176,8 @@ class Executor:
         success_count = sum(1 for r in results.values() if r.get("rc", 0) == 0)
         failed_count = total - success_count
 
+        success_hosts = [h for h, r in results.items() if r.get("rc", 0) == 0]
         failed_hosts = [h for h, r in results.items() if r.get("rc", 0) != 0]
-
-        max_failed_detail = self.config.max_failed_detail
-        failed_detail = {}
-        for host in failed_hosts[:max_failed_detail]:
-            host_result = results[host].copy()
-            max_len = self.config.max_output_length
-            if "stdout" in host_result and len(host_result["stdout"]) > max_len:
-                host_result["stdout"] = (
-                    host_result["stdout"][: max_len // 2]
-                    + "\n...[truncated]...\n"
-                    + host_result["stdout"][-max_len // 2 :]
-                )
-            if "stderr" in host_result and len(host_result["stderr"]) > max_len:
-                host_result["stderr"] = (
-                    host_result["stderr"][: max_len // 2]
-                    + "\n...[truncated]...\n"
-                    + host_result["stderr"][-max_len // 2 :]
-                )
-            failed_detail[host] = host_result
 
         status = "success"
         if failed_count > 0:
@@ -181,7 +188,7 @@ class Executor:
 
         message = f"Execution completed, {failed_count} hosts failed"
         if failed_count > 0:
-            message += f". Use get_task_detail('{task_id}', host) to view details"
+            message += f". Use get_result(task_id='{task_id}', status='failed') to view failure details"
 
         return {
             "task_id": task_id,
@@ -191,30 +198,31 @@ class Executor:
                 "success": success_count,
                 "failed": failed_count,
             },
+            "success_hosts": success_hosts,
             "failed_hosts": failed_hosts,
-            "failed_detail": failed_detail,
-            "has_more_failed": len(failed_hosts) > max_failed_detail,
-            "elapsed": f"{elapsed:.2f}s",
+            "results": results,
             "message": message,
         }
 
     def _build_inventory(
         self,
         targets: List[str],
-        credentials: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Build Ansible inventory.
+        """Build Ansible inventory from inventory.yml file.
 
         Args:
             targets: List of target hosts.
-            credentials: Credentials information provided by LLM.
 
         Returns:
             Ansible inventory dictionary.
+
+        Raises:
+            ValueError: If target host is not found in inventory.yml.
         """
         inventory: Dict[str, Any] = {"all": {"hosts": {}}}
+        missing_hosts = []
+
         for target in targets:
-            # Special handling for localhost, using local connection instead of SSH
             if target == "localhost":
                 host_data: Dict[str, Any] = {
                     "ansible_connection": "local",
@@ -222,48 +230,34 @@ class Executor:
                 }
                 logger.debug(f"Using local connection for localhost")
             else:
-                host_data: Dict[str, Any] = {
-                    "ansible_host": target,
-                    "ansible_ssh_common_args": self.config.ssh_base_args,
-                }
-
                 cached_host = self.inventory_manager.get_host(target)
 
-                # First use cached information (if available)
-                if cached_host:
-                    host_data.update(cached_host)
-                    logger.debug(f"Using cached inventory info: {target}")
-                    if "ansible_python_interpreter" in cached_host:
-                        logger.debug(
-                            f"Using cached Python interpreter: {cached_host['ansible_python_interpreter']}"
-                        )
+                if not cached_host:
+                    missing_hosts.append(target)
+                    logger.warning(f"Host {target} not found in inventory.yml")
+                    continue
 
-                # If new credentials provided, override cached information
-                if credentials:
-                    if "user" in credentials:
-                        host_data["ansible_user"] = credentials["user"]
-                    if "port" in credentials:
-                        host_data["ansible_port"] = credentials["port"]
-                    if "password" in credentials:
-                        host_data["ansible_password"] = credentials["password"]
-                        host_data["ansible_ssh_common_args"] = (
-                            f"{self.config.ssh_base_args} {self.config.ssh_password_args}"
-                        )
-                        logger.debug(
-                            f"Using provided credentials: {target}, SSH args: {host_data['ansible_ssh_common_args']}"
-                        )
-                    elif "private_key" in credentials:
-                        host_data["ansible_ssh_private_key_file"] = credentials[
-                            "private_key"
-                        ]
-                        host_data["ansible_ssh_common_args"] = self.config.ssh_base_args
-                        logger.debug(
-                            f"Using provided credentials: {target}, SSH args: {host_data['ansible_ssh_common_args']}"
-                        )
-                    else:
-                        logger.debug(f"Using provided credentials: {target}")
+                host_data = {
+                    "ansible_host": cached_host.get("ansible_host", target),
+                    "ansible_ssh_common_args": self.config.ssh_base_args,
+                }
+                host_data.update(cached_host)
+                logger.debug(f"Using inventory info: {target}")
+
+                if "ansible_password" in host_data:
+                    host_data["ansible_ssh_common_args"] = (
+                        f"{self.config.ssh_base_args} {self.config.ssh_password_args}"
+                    )
 
             inventory["all"]["hosts"][target] = host_data
+
+        if missing_hosts:
+            raise ValueError(
+                f"Hosts not found in inventory.yml: {', '.join(missing_hosts)}. "
+                f"Please add them to etc/inventory.yml first."
+            )
+
+        self._cache_debug_file("inventory.json", inventory)
         return inventory
 
     def _run_ansible(
@@ -273,6 +267,7 @@ class Executor:
         timeout: Optional[int] = None,
         extravars: Optional[Dict[str, Any]] = None,
         playbook_file: Optional[Path] = None,
+        task_id: Optional[str] = None,
     ) -> tuple[Any, List[Dict[str, Any]]]:
         """Execute Ansible playbook.
 
@@ -282,12 +277,14 @@ class Executor:
             timeout: Timeout in seconds.
             extravars: Extra variables.
             playbook_file: Directly specify playbook file path, takes precedence over playbook parameter.
+            task_id: Optional task ID to use for debug cache.
 
         Returns:
             tuple[Any, List[Dict[str, Any]]]: (ansible_runner result, events list).
         """
         timeout = min(timeout or self.config.default_timeout, self.config.max_timeout)
-        task_id = str(uuid.uuid4())
+        task_id = task_id or str(uuid.uuid4())
+        self._current_task_task_id = task_id
 
         ansible_logger.log_execution_start(
             task_id=task_id,
@@ -311,10 +308,17 @@ class Executor:
 
             if playbook_file is not None:
                 resolved_playbook_path = playbook_file
+                # Cache playbook file in debug mode
+                if self.config.debug_enabled:
+                    playbook_content = resolved_playbook_path.read_text(encoding="utf-8")
+                    self._cache_debug_file("playbook.yml", playbook_content)
             else:
                 resolved_playbook_path = tmpdir_path / "playbook.yml"
                 playbook_content = yaml.dump(playbook, allow_unicode=True)
                 resolved_playbook_path.write_text(playbook_content, encoding="utf-8")
+                # Cache generated playbook in debug mode
+                if self.config.debug_enabled:
+                    self._cache_debug_file("playbook.yml", playbook_content)
 
             logger.debug(f"Executing playbook: {resolved_playbook_path}")
             logger.debug(f"Inventory: {inventory_path}")
@@ -389,28 +393,8 @@ class Executor:
             elapsed=elapsed,
         )
 
+        self._current_task_task_id = None
         return result, events
-
-    def _parse_wrapper_output(self, output: str) -> Dict[str, Any]:
-        """Parse wrapper output.
-
-        Args:
-            output: Wrapper execution output.
-
-        Returns:
-            Dict[str, Any]: Parsed result, including stdout, stderr, rc, and elapsed.
-        """
-        result = {"stdout": "", "stderr": "", "rc": -1, "elapsed": "0s"}
-        stdout_match = re.search(r"<<<STDOUT>>>(.*?)<<<STDERR>>>", output, re.DOTALL)
-        if stdout_match:
-            result["stdout"] = stdout_match.group(1).strip()
-        rc_match = re.search(r"EXIT_CODE:(\d+)", output)
-        if rc_match:
-            result["rc"] = int(rc_match.group(1))
-        elapsed_match = re.search(r"ELAPSED_TIME:([\d.]+)", output)
-        if elapsed_match:
-            result["elapsed"] = f"{elapsed_match.group(1)}s"
-        return result
 
     def _test_connectivity(
         self,
@@ -472,9 +456,8 @@ class Executor:
     ) -> Dict[str, Dict[str, Any]]:
         results = {}
         for host in hosts:
-            results[host] = {"rc": -1, "stdout": "", "stderr": "", "elapsed": "0s"}
+            results[host] = {"rc": -1, "stdout": "", "stderr": ""}
 
-        # Process all events
         for event in events:
             event_type = event.get("event")
             event_data = event.get("event_data", {})
@@ -485,45 +468,52 @@ class Executor:
 
             if event_type == "runner_on_ok":
                 res = event_data.get("res", {})
-                stdout = res.get("stdout", "")
-                if "<<<STDOUT>>>" in stdout:
-                    parsed = self._parse_wrapper_output(stdout)
-                    results[host] = parsed
-                else:
-                    results[host] = {
-                        "rc": res.get("rc", 0),
-                        "stdout": stdout,
-                        "stderr": res.get("stderr", ""),
-                        "elapsed": "0s",
-                    }
+                results[host] = {
+                    "rc": res.get("rc", 0),
+                    "stdout": res.get("stdout", ""),
+                    "stderr": res.get("stderr", ""),
+                }
+                logger.debug(
+                    f"Host {host} OK: rc={results[host]['rc']}, "
+                    f"stdout_len={len(results[host]['stdout'])}, "
+                    f"stderr_len={len(results[host]['stderr'])}"
+                )
+                if results[host]["stdout"]:
+                    logger.debug(f"Host {host} stdout: {results[host]['stdout']}")
+                if results[host]["stderr"]:
+                    logger.debug(f"Host {host} stderr: {results[host]['stderr']}")
             elif event_type in ["runner_on_failed", "runner_on_unreachable"]:
                 res = event_data.get("res", {})
+                error_msg = (
+                    res.get("stderr")
+                    or res.get("msg")
+                    or str(event_data)
+                )
                 results[host] = {
                     "rc": res.get("rc", result.rc),
-                    "stdout": "",
-                    "stderr": res.get("msg", str(event_data)),
-                    "elapsed": "0s",
+                    "stdout": res.get("stdout", ""),
+                    "stderr": error_msg,
                     "error_type": (
                         "connection_error"
                         if "unreachable" in event_type
                         else "execution_error"
                     ),
                 }
+                logger.debug(
+                    f"Host {host} FAILED ({event_type}): rc={results[host]['rc']}, "
+                    f"stderr={results[host]['stderr'][:200]}"
+                )
 
         return results
 
     def check_host_status(
         self,
         targets: List[str],
-        credentials: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
         task_id: Optional[str] = None,
         skip_lock: bool = False,
     ) -> Dict[str, Any]:
         logger.info(f"Checking host status: {targets}")
-        logger.debug(
-            f"Credential info: user={credentials.get('user') if credentials else None}, port={credentials.get('port') if credentials else None}"
-        )
 
         # Check if hosts are busy (if not skipping lock)
         if not skip_lock:
@@ -549,38 +539,26 @@ class Executor:
                 }
             self._current_task_hosts = targets
 
-        # Final inventory used
-        final_inventory = None
+        try:
+            inventory = self._build_inventory(targets)
+        except ValueError as e:
+            return {
+                "task_id": task_id or str(uuid.uuid4()),
+                "status": "failed",
+                "summary": {
+                    "total": len(targets),
+                    "success": 0,
+                    "error": len(targets),
+                },
+                "results": {
+                    host: {
+                        "error": str(e),
+                        "error_type": "host_not_in_inventory",
+                    }
+                    for host in targets
+                },
+            }
 
-        if credentials:
-            logger.info("Building inventory with provided credentials...")
-            # Directly use provided credentials to build inventory
-            final_inventory = self._build_inventory(targets, credentials)
-
-            # Update cached credential information for hosts with provided credentials
-            for host in targets:
-                update_result = self.inventory_manager.update_host_credentials(
-                    host=host,
-                    user=credentials.get("user"),
-                    port=credentials.get("port"),
-                    password=credentials.get("password"),
-                    private_key=credentials.get("private_key"),
-                )
-                if update_result.get("status") != "success":
-                    logger.warning(
-                        f"Failed to update host credentials: {host}, error: {update_result.get('message')}"
-                    )
-                else:
-                    logger.info(f"Host {host} credentials updated to cache")
-        else:
-            # No credentials provided, use cached inventory
-            final_inventory = self._build_inventory(targets, credentials=None)
-
-        # Ensure final_inventory is not None
-        if final_inventory is None:
-            final_inventory = self._build_inventory(targets, credentials=None)
-
-        inventory = final_inventory
         logger.debug(f"Final inventory used: {inventory}")
 
         try:
@@ -780,7 +758,6 @@ class Executor:
     def _check_hosts_reachability(
         self,
         targets: List[str],
-        credentials: Optional[Dict[str, Any]],
         timeout: Optional[int],
         detect_result: Optional[Dict[str, Any]] = None,
         skip_lock: bool = False,
@@ -791,7 +768,6 @@ class Executor:
 
         Args:
             targets: List of target hosts
-            credentials: SSH credentials
             timeout: Timeout in seconds
             detect_result: Existing detection results, use directly if available to avoid duplicate detection
             skip_lock: Whether to skip lock acquisition
@@ -801,7 +777,7 @@ class Executor:
         """
         if detect_result is None:
             detect_result = self.check_host_status(
-                targets, credentials, timeout, skip_lock=skip_lock
+                targets, timeout, skip_lock=skip_lock
             )
         logger.info(f"Environment detection results: {detect_result['results']}")
         results = {}
@@ -819,7 +795,6 @@ class Executor:
     def install_python(
         self,
         targets: List[str],
-        credentials: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
         task_id: Optional[str] = None,
         detect_result: Optional[Dict[str, Any]] = None,
@@ -828,7 +803,6 @@ class Executor:
         logger.info(f"Installing Python: {targets}")
         results, detect_result = self._check_hosts_reachability(
             targets,
-            credentials,
             timeout,
             detect_result=detect_result,
             skip_lock=skip_lock,
@@ -850,7 +824,7 @@ class Executor:
                 },
                 "results": results,
             }
-        inventory = self._build_inventory(hosts_need_install, credentials)
+        inventory = self._build_inventory(hosts_need_install)
         python_path = "/home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3"
         idempotency_check_playbook = [
             {
@@ -1052,7 +1026,6 @@ class Executor:
     def install_tsc_tools(
         self,
         targets: List[str],
-        credentials: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
         task_id: Optional[str] = None,
         detect_result: Optional[Dict[str, Any]] = None,
@@ -1061,7 +1034,6 @@ class Executor:
         logger.info(f"Installing tsc_tools: {targets}")
         results, detect_result = self._check_hosts_reachability(
             targets,
-            credentials,
             timeout,
             detect_result=detect_result,
             skip_lock=skip_lock,
@@ -1083,7 +1055,7 @@ class Executor:
                 "results": results,
             }
         install_path = self.config.tsc_tools_install_path
-        inventory = self._build_inventory(hosts_need_check, credentials)
+        inventory = self._build_inventory(hosts_need_check)
         playbook = [
             {
                 "name": "Check tsc_tools installation",
@@ -1162,7 +1134,7 @@ class Executor:
                 ],
             }
         ]
-        install_inventory = self._build_inventory(hosts_need_install, credentials)
+        install_inventory = self._build_inventory(hosts_need_install)
         result, install_events = self._run_ansible(
             install_playbook, install_inventory, timeout
         )
@@ -1253,7 +1225,6 @@ class Executor:
         targets: List[str],
         src: str,
         dest: str,
-        credentials: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
         task_id: Optional[str] = None,
         detect_result: Optional[Dict[str, Any]] = None,
@@ -1298,7 +1269,7 @@ class Executor:
         try:
             if detect_result is None:
                 detect_result = self.check_host_status(
-                    targets, credentials, timeout, skip_lock=True
+                    targets, timeout=timeout, skip_lock=True
                 )
             unreachable_hosts = [
                 h for h, info in detect_result["results"].items() if info.get("error")
@@ -1335,7 +1306,6 @@ class Executor:
                 logger.info(f"The following hosts need Python installed: {hosts_need_python}")
                 install_result = self.install_python(
                     hosts_need_python,
-                    credentials,
                     timeout=timeout,
                     detect_result=detect_result,
                     skip_lock=True,
@@ -1378,7 +1348,7 @@ class Executor:
                         },
                         "results": results,
                     }
-            inventory = self._build_inventory(targets, credentials=credentials)
+            inventory = self._build_inventory(targets)
             playbook = [
                 {
                     "name": "Dispatch file",
@@ -1473,7 +1443,6 @@ class Executor:
         self,
         targets: List[str],
         command: str,
-        credentials: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
         task_id: Optional[str] = None,
         detect_result: Optional[Dict[str, Any]] = None,
@@ -1519,7 +1488,7 @@ class Executor:
         try:
             if detect_result is None:
                 detect_result = self.check_host_status(
-                    targets, credentials, timeout, skip_lock=True
+                    targets, timeout=timeout, skip_lock=True
                 )
             unreachable_hosts = [
                 h for h, info in detect_result["results"].items() if info.get("error")
@@ -1556,7 +1525,6 @@ class Executor:
                 logger.info(f"以下主机需要安装 Python: {hosts_need_python}")
                 install_result = self.install_python(
                     hosts_need_python,
-                    credentials,
                     timeout=timeout,
                     detect_result=detect_result,
                     skip_lock=True,
@@ -1600,7 +1568,7 @@ class Executor:
                         "results": results,
                     }
 
-            inventory = self._build_inventory(targets, credentials=credentials)
+            inventory = self._build_inventory(targets)
             playbook = [
                 {
                     "name": "Execute command",
@@ -1609,19 +1577,9 @@ class Executor:
                     "serial": self.config.execution_serial,
                     "tasks": [
                         {
-                            "name": "Execute command with wrapper",
+                            "name": "Run command",
                             "ansible.builtin.shell": {
-                                "cmd": f"""
-set -a
-start_time=$(date +%s)
-output=$({command} 2>&1)
-rc=$?
-end_time=$(date +%s)
-elapsed=$(echo "$end_time - $start_time" | bc)
-echo "<<<STDOUT>>>$output<<<STDERR>>>"
-echo "EXIT_CODE:$rc"
-echo "ELAPSED_TIME:$elapsed"
-""",
+                                "cmd": command,
                             },
                             "register": "command_result",
                         },
@@ -1634,9 +1592,11 @@ echo "ELAPSED_TIME:$elapsed"
             results = self._parse_result(result, targets, events)
 
             final_task_id = task_id or str(uuid.uuid4())
-            return self._build_summary_result(
-                final_task_id, results, elapsed, "ansible_shell"
-            )
+            return {
+                "task_id": final_task_id,
+                "status": "success" if all(r["rc"] == 0 for r in results.values()) else "failed",
+                "results": results,
+            }
         finally:
             # 释放主机锁
             self._release_hosts(targets)
@@ -1802,7 +1762,6 @@ echo "ELAPSED_TIME:$elapsed"
         self,
         playbook: str,
         targets: List[str],
-        credentials: Optional[Dict[str, Any]] = None,
         extravars: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
         task_id: Optional[str] = None,
@@ -1831,6 +1790,21 @@ echo "ELAPSED_TIME:$elapsed"
                     for host in targets
                 },
             }
+        
+        # 自动设置 bootstrap playbook 的 api_url
+        logger.info(f"playbook 参数值: {playbook}")
+        if playbook in ["bootstrap_tsc_environment", "bootstrap_tsc_environment.yml"]:
+            if extravars is None:
+                extravars = {}
+            if "api_url" not in extravars:
+                mcp_host = self.config.mcp_host
+                mcp_port = self.config.mcp_port
+                api_url = f"http://{mcp_host}:{mcp_port}/api/v1/packages/download"
+                extravars["api_url"] = api_url
+                logger.info(f"自动设置 api_url: {api_url}")
+        else:
+            logger.info(f"不是 bootstrap playbook，跳过自动设置 api_url")
+        
         acquired, busy_hosts = self._acquire_hosts(targets)
         if not acquired:
             logger.warning(f"以下主机正在执行任务，拒绝请求: {busy_hosts}")
@@ -1852,7 +1826,7 @@ echo "ELAPSED_TIME:$elapsed"
         try:
             if detect_result is None:
                 detect_result = self.check_host_status(
-                    targets, credentials, timeout, skip_lock=True
+                    targets, timeout=timeout, skip_lock=True
                 )
             # 检查是否有不可达的主机
             unreachable_hosts = [
@@ -1891,7 +1865,6 @@ echo "ELAPSED_TIME:$elapsed"
                 logger.info(f"以下主机需要安装 Python: {hosts_need_python}")
                 install_result = self.install_python(
                     hosts_need_python,
-                    credentials,
                     timeout=timeout,
                     detect_result=detect_result,
                     skip_lock=True,
@@ -1934,8 +1907,10 @@ echo "ELAPSED_TIME:$elapsed"
                         },
                         "results": results,
                     }
-            inventory = self._build_inventory(targets, credentials=credentials)
             final_task_id = task_id or str(uuid.uuid4())
+            self._current_task_task_id = final_task_id
+            
+            inventory = self._build_inventory(targets)
 
             start_time = time.time()
             result, run_events = self._run_ansible(
@@ -1944,6 +1919,7 @@ echo "ELAPSED_TIME:$elapsed"
                 timeout=timeout,
                 extravars=extravars,
                 playbook_file=playbook_path,
+                task_id=final_task_id,
             )
             elapsed = time.time() - start_time
 
@@ -1969,6 +1945,7 @@ echo "ELAPSED_TIME:$elapsed"
                 final_task_id, results, elapsed, "run_playbook"
             )
         finally:
+            self._current_task_task_id = None
             self._release_hosts(targets)
             self._current_task_hosts = []
 
@@ -1977,7 +1954,6 @@ echo "ELAPSED_TIME:$elapsed"
         targets: List[str],
         src: str,
         dest: str,
-        credentials: Optional[Dict[str, Any]] = None,
         flat: bool = False,
         timeout: Optional[int] = None,
         task_id: Optional[str] = None,
@@ -2010,7 +1986,7 @@ echo "ELAPSED_TIME:$elapsed"
         try:
             if detect_result is None:
                 detect_result = self.check_host_status(
-                    targets, credentials, timeout, skip_lock=True
+                    targets, timeout=timeout, skip_lock=True
                 )
             unreachable_hosts = [
                 h for h, info in detect_result["results"].items() if info.get("error")
@@ -2049,7 +2025,6 @@ echo "ELAPSED_TIME:$elapsed"
                 logger.info(f"以下主机需要安装 Python: {hosts_need_python}")
                 install_result = self.install_python(
                     hosts_need_python,
-                    credentials,
                     timeout=timeout,
                     detect_result=detect_result,
                     skip_lock=True,
@@ -2094,7 +2069,7 @@ echo "ELAPSED_TIME:$elapsed"
                         },
                         "results": results,
                     }
-            inventory = self._build_inventory(targets, credentials=credentials)
+            inventory = self._build_inventory(targets)
             playbook = [
                 {
                     "name": "Fetch file",

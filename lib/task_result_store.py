@@ -83,14 +83,17 @@ class TaskResultStore:
 
         logger.debug(f"Saved task result: {result_path}")
 
-    def get_result(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Get full result.
+    def get_result(
+        self, task_id: str, status: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Get task result.
 
         Args:
             task_id: Task ID.
+            status: Optional status filter ('failed' or 'success'). If specified, filters hosts by execution status.
 
         Returns:
-            Full result data, None if not found.
+            Result data, None if not found.
         """
         result_path = self._get_result_path(task_id)
 
@@ -101,92 +104,46 @@ class TaskResultStore:
         with result_path.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
-        return data.get("results")
-
-    def get_host_result(self, task_id: str, host: str) -> Optional[Dict[str, Any]]:
-        """Get result for specific host.
-
-        Args:
-            task_id: Task ID.
-            host: Host IP.
-
-        Returns:
-            Execution result for the host, None if not found.
-        """
-        results = self.get_result(task_id)
+        results = data.get("results")
         if results is None:
             return None
 
-        host_results = results.get("results", {})
-        return host_results.get(host)
+        if status == "failed":
+            host_results = results.get("results", {})
+            success_hosts = set(results.get("success_hosts", []))
+            failed_results = {
+                h: r for h, r in host_results.items() if h not in success_hosts
+            }
+            return {
+                "task_id": task_id,
+                "status": results.get("status"),
+                "failed_hosts": failed_results,
+                "total_failed": len(failed_results),
+            }
 
-    def get_failed_hosts(
-        self, task_id: str, limit: int = 20, offset: int = 0
-    ) -> Dict[str, Any]:
-        """Get failed host results.
+        if status == "success":
+            host_results = results.get("results", {})
+            success_hosts = results.get("success_hosts", [])
+            success_results = {h: host_results[h] for h in success_hosts if h in host_results}
+            return {
+                "task_id": task_id,
+                "status": results.get("status"),
+                "success_hosts": success_results,
+                "total_success": len(success_results),
+            }
 
-        Args:
-            task_id: Task ID.
-            limit: Return count limit.
-            offset: Offset.
+        return results
 
-        Returns:
-            Detailed results of failed hosts.
-        """
-        results = self.get_result(task_id)
-        if results is None:
-            return {"task_id": task_id, "failed_hosts": {}, "total": 0}
-
-        host_results = results.get("results", {})
-
-        failed_hosts = {
-            host: result
-            for host, result in host_results.items()
-            if result.get("rc", 0) != 0
-        }
-
-        total = len(failed_hosts)
-        host_list = list(failed_hosts.items())[offset : offset + limit]
-
-        return {
-            "task_id": task_id,
-            "failed_hosts": dict(host_list),
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "has_more": offset + limit < total,
-        }
-
-    def get_all_results(
-        self, task_id: str, limit: int = 20, offset: int = 0
-    ) -> Dict[str, Any]:
-        """Get all host results (paginated).
+    def get_failed_results(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Get all failed host results for a task.
 
         Args:
             task_id: Task ID.
-            limit: Return count limit.
-            offset: Offset.
 
         Returns:
-            Host execution results.
+            Failed host results, None if task not found.
         """
-        results = self.get_result(task_id)
-        if results is None:
-            return {"task_id": task_id, "results": {}, "total": 0}
-
-        host_results = results.get("results", {})
-
-        total = len(host_results)
-        host_list = list(host_results.items())[offset : offset + limit]
-
-        return {
-            "task_id": task_id,
-            "results": dict(host_list),
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-            "has_more": offset + limit < total,
-        }
+        return self.get_result(task_id, status="failed")
 
     def delete_result(self, task_id: str) -> bool:
         """Delete result file.

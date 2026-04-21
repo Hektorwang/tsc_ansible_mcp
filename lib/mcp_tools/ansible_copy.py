@@ -18,30 +18,27 @@ def register_ansible_copy(server):
 
     @server.mcp.tool(
         name="ansible_copy",
-        description="""
-# Task: Copy Files to Target Hosts
+        description="""Copy files from local machine to target hosts. Returns complete results (rc, stdout, stderr) for each host.
 
-## Workflow
+## Prerequisites
+- Target hosts must be configured in inventory.yml first.
+- The tool auto-installs Python3 if missing on target hosts.
 
-- Copy files from local to remote hosts
+## Parameters
+- targets (required): List of target hostnames or IPs.
+- src (required): Local file path to copy from.
+- dest (required): Remote file path to copy to.
+- timeout (optional): Execution timeout in seconds.
 
-## Tool Calls
+## Return Value
+Returns complete execution results including rc, stdout, and stderr for each host.
 
-```json
+## Usage Example
 {
-  "name": "ansible_copy",
-  "arguments": {
-    "targets": ["host1.example.com"],
-    "src": "/path/to/local/file",
-    "dest": "/path/to/remote/file",
-    "password": "my_psw", //Optional
-    "private_key": "path_to_key_file", //Optional
-    "timeout": 600, //Optional
-    "user": "admin", 
-    "port": 22 //Optional
-  }
+  "targets": ["web-server-01"],
+  "src": "/path/to/local/config.yml",
+  "dest": "/etc/myapp/config.yml"
 }
-```
 """,
     )
     @require_permission("ansible_copy")
@@ -49,31 +46,18 @@ def register_ansible_copy(server):
         targets: List[str],
         src: str,
         dest: str,
-        user: Optional[str] = None,
-        port: Optional[int] = None,
-        password: Optional[str] = None,
-        private_key: Optional[str] = None,
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
 
         logger.info(
             f"MCP tool call: ansible_copy, targets={targets}, src={src}, dest={dest}"
         )
-        credentials: Dict[str, Any] = {}
-        if user:
-            credentials["user"] = user
-        if port:
-            credentials["port"] = port
-        if password:
-            credentials["password"] = password
-        if private_key:
-            credentials["private_key"] = private_key
         task_id = str(uuid.uuid4())
         server.task_repo.create(
             task_id, "ansible_copy", {"targets": targets, "src": src, "dest": dest}
         )
         result = server.execution_service.ansible_copy(
-            targets, src, dest, credentials, timeout, task_id
+            targets, src, dest, timeout, task_id
         )
         logger.info(f"MCP tool response: ansible_copy, task_id={task_id}, result={result}")
         return result

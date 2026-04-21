@@ -26,6 +26,8 @@ class PackageNormalizer:
         "openeuler": "Euler",
         "hce": "Euler",
         "ningos": "Euler",
+        "fitserveros": "Euler",
+        "fitstarryskyos": "Euler",
     }
 
     def normalize_arch(self, arch: str) -> str:

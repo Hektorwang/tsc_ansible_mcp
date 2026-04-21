@@ -137,20 +137,17 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
     def _register_dynamic_playbook_tools(self) -> None:
         """Dynamically register playbook tools."""
-        self.playbook_scanner.scan_playbooks()
+        tool_definitions = self.playbook_scanner.scan_playbooks()
 
-        for playbook_name, metadata in self.playbook_scanner.playbooks.items():
-            tool_description = self.playbook_scanner.generate_tool_definition(metadata)
-            tool_name = f"playbook_{playbook_name}"
+        for tool_def in tool_definitions:
+            tool_name = tool_def["name"]
+            tool_description = tool_def["description"]
+            playbook_name = tool_name.replace("playbook_", "")
 
             def make_playbook_tool(playbook_name: str) -> Callable[..., Dict[str, Any]]:
                 @require_permission(f"playbook_{playbook_name}")
                 def playbook_tool(
                     targets: List[str],
-                    user: Optional[str] = None,
-                    port: Optional[int] = None,
-                    password: Optional[str] = None,
-                    private_key: Optional[str] = None,
                     extravars: Optional[Union[Dict[str, Any], str]] = None,
                     timeout: Optional[int] = None,
                 ) -> Dict[str, Any]:
@@ -167,21 +164,11 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                                 parsed_extravars = None
                         else:
                             parsed_extravars = extravars
-                    credentials: Dict[str, Any] = {}
-                    if user:
-                        credentials["user"] = user
-                    if port:
-                        credentials["port"] = port
-                    if password:
-                        credentials["password"] = password
-                    if private_key:
-                        credentials["private_key"] = private_key
                     task_id = str(uuid.uuid4())
                     self.task_repo.create(task_id, playbook_name, {"targets": targets})
                     return self.execution_service.execute_playbook(
                         playbook_name,
                         targets,
-                        credentials,
                         parsed_extravars,
                         timeout,
                         task_id,
@@ -222,11 +209,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             request: ShellRequest,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, Any]:
-            credentials = (
-                request.credentials.model_dump(exclude_none=True)
-                if request.credentials
-                else {}
-            )
             task_id = str(uuid.uuid4())
             self.task_repo.create(
                 task_id,
@@ -236,7 +218,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             result = self.execution_service.execute_shell(
                 targets=request.targets,
                 command=request.command,
-                credentials=credentials if credentials else None,
                 timeout=request.timeout,
                 task_id=task_id,
             )
@@ -281,18 +262,12 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             request: HostRequest,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, Any]:
-            credentials = (
-                request.credentials.model_dump(exclude_none=True)
-                if request.credentials
-                else {}
-            )
             task_id = str(uuid.uuid4())
             self.task_repo.create(
                 task_id, "check_host_status", {"targets": request.targets}
             )
             result = self.execution_service.check_host_status(
                 targets=request.targets,
-                credentials=credentials if credentials else None,
                 timeout=request.timeout,
                 task_id=task_id,
             )
@@ -304,18 +279,12 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             request: InstallPythonRequest,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, Any]:
-            credentials = (
-                request.credentials.model_dump(exclude_none=True)
-                if request.credentials
-                else {}
-            )
             task_id = str(uuid.uuid4())
             self.task_repo.create(
                 task_id, "install_python", {"targets": request.targets}
             )
             result = self.execution_service.install_python(
                 targets=request.targets,
-                credentials=credentials if credentials else None,
                 timeout=request.timeout,
                 task_id=task_id,
             )
@@ -327,18 +296,12 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             request: InstallTscToolsRequest,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, Any]:
-            credentials = (
-                request.credentials.model_dump(exclude_none=True)
-                if request.credentials
-                else {}
-            )
             task_id = str(uuid.uuid4())
             self.task_repo.create(
                 task_id, "install_tsc_tools", {"targets": request.targets}
             )
             result = self.execution_service.install_tsc_tools(
                 targets=request.targets,
-                credentials=credentials if credentials else None,
                 timeout=request.timeout,
                 task_id=task_id,
             )
@@ -350,11 +313,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             request: CopyRequest,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, Any]:
-            credentials = (
-                request.credentials.model_dump(exclude_none=True)
-                if request.credentials
-                else {}
-            )
             task_id = str(uuid.uuid4())
             self.task_repo.create(
                 task_id,
@@ -365,7 +323,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 targets=request.targets,
                 src=request.src,
                 dest=request.dest,
-                credentials=credentials if credentials else None,
                 timeout=request.timeout,
                 task_id=task_id,
             )
@@ -380,11 +337,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             request: FetchRequest,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, Any]:
-            credentials = (
-                request.credentials.model_dump(exclude_none=True)
-                if request.credentials
-                else {}
-            )
             task_id = str(uuid.uuid4())
             self.task_repo.create(
                 task_id,
@@ -395,7 +347,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 targets=request.targets,
                 src=request.src,
                 dest=request.dest,
-                credentials=credentials if credentials else None,
                 flat=request.flat,
                 timeout=request.timeout,
                 task_id=task_id,
@@ -422,11 +373,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             request: PlaybookRequest,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, Any]:
-            credentials = (
-                request.credentials.model_dump(exclude_none=True)
-                if request.credentials
-                else {}
-            )
             task_id = str(uuid.uuid4())
             self.task_repo.create(
                 task_id,
@@ -436,7 +382,6 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             result = self.execution_service.execute_playbook(
                 playbook=request.playbook,
                 targets=request.targets,
-                credentials=credentials if credentials else None,
                 extravars=request.extravars,
                 timeout=request.timeout,
                 task_id=task_id,

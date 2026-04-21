@@ -103,10 +103,7 @@ class PackageScanner:
         """
         # Handle noarch case
         if "noarch" in filename:
-            # noarch packages match any arch
-            if distro:
-                # Check if distro matches
-                return distro in filename or "noarch" in filename
+            # noarch packages match any distro and any arch
             return True
 
         # Non-noarch packages need to match arch

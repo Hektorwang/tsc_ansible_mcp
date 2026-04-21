@@ -1,39 +1,4 @@
-# @meta: {
-#   "description": "Bootstrap TSC environment including tsc_tools and tsc_python. Use this tool if check_host_status reports that tsc_tools or tsc_python are not installed.",
-#   "author": "tsc",
-#   "tags": ["bootstrap", "tsc", "tools", "python", "安装", "环境初始化"],
-#   "parameters": [
-#     {
-#       "name": "api_url",
-#       "type": "str",
-#       "default": "http://localhost:8500/api/v1/packages/download",
-#       "description": "API endpoint for package download"
-#     }
-#   ],
-#   "use_cases": [
-#     "Install tsc_tools and tsc_python on target hosts",
-#     "Bootstrap TSC environment on new servers",
-#     "Automate package installation via API",
-#     "Detect system distro and arch automatically"
-#   ],
-#   "Success on": "rc=0",
-#   "example": {
-#     "playbook": "bootstrap_tsc_environment.yml",
-#     "targets": ["192.168.1.10"],
-#     "extravars": {
-#       "api_url": "http://your-server:8500/api/v1/packages/download"
-#     },
-#     "user": "root",
-#     "password": "your_password"
-#   },
-#   "notes": [
-#     "Does not require Python on target hosts (uses raw/shell modules)",
-#     "Automatically detects system distro and architecture",
-#     "Checks existing installation status before proceeding",
-#     "Retries up to 3 times if download fails",
-#     "Supports HTTPS with -k flag"
-#   ]
-# }
+
 ---
 - name: Bootstrap TSC environment
   hosts: all
@@ -90,10 +55,9 @@
         cmd: |-
           set -e
           set -o pipefail
-          curl -k -o /tmp/tsc_tools.sh "{{ api_url }}?pkg_type=tsc_tools&distro={{ distro }}&arch={{ arch }}"
+          curl -k -sSL -o /tmp/tsc_tools.sh "{{ api_url }}?pkg_type=tsc_tools&distro={{ distro }}&arch={{ arch }}"
           chmod +x /tmp/tsc_tools.sh
           /tmp/tsc_tools.sh
-          rm -f /tmp/tsc_tools.sh
         executable: /bin/bash
       register: tsc_tools_install
       retries: 3
@@ -106,36 +70,25 @@
         cmd: |-
           set -e
           set -o pipefail
-          curl -k -o /tmp/tsc_python.sh "{{ api_url }}?pkg_type=tsc_python&distro={{ distro }}&arch={{ arch }}"
+          curl -k -sSL -o /tmp/tsc_python.sh "{{ api_url }}?pkg_type=tsc_python&distro={{ distro }}&arch={{ arch }}"
           chmod +x /tmp/tsc_python.sh
           /tmp/tsc_python.sh
-          rm -f /tmp/tsc_python.sh
         executable: /bin/bash
       register: tsc_python_install
       retries: 3
       delay: 10
       until: tsc_python_install.rc == 0
 
-    - name: Verify tsc_tools installation
-      when: install_tsc_tools
-      ansible.builtin.shell:
-        cmd: |-
-          tsc_tools --version
-        executable: /bin/bash
-      register: tsc_tools_verify
-      ignore_errors: true
-
     - name: Verify tsc_python installation
       when: install_tsc_python
       ansible.builtin.shell:
         cmd: |-
-          tsc_python --version
-        executable: /bin/bash
+          source /home/tsc/tsc_profile
+          python -V
       register: tsc_python_verify
       ignore_errors: true
 
     - name: Show installation results
       ansible.builtin.debug:
         msg:
-          - "tsc_tools installed: {{ 'success' if tsc_tools_verify.rc == 0 else 'failed' }}"
           - "tsc_python installed: {{ 'success' if tsc_python_verify.rc == 0 else 'failed' }}"

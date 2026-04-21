@@ -177,6 +177,10 @@ class Config:
                 "ansible_execution_retention": "30 days",
                 "ansible_execution_rotation": "50 MB",
             },
+            "debug": {
+                "enabled": False,
+                "cache_dir": "logs/debug",
+            },
         }
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -567,6 +571,19 @@ class Config:
     @property
     def result_store_dir(self) -> str:
         return self.execution_settings.get("result_store_dir", "logs/task_results")
+
+    @property
+    def debug_settings(self) -> Dict[str, Any]:
+        return self.get("debug", {})
+
+    @property
+    def debug_enabled(self) -> bool:
+        return self.debug_settings.get("enabled", False)
+
+    @property
+    def debug_cache_dir(self) -> Path:
+        base_dir = Path(__file__).parent.parent.resolve()
+        return base_dir / self.debug_settings.get("cache_dir", "logs/debug")
 
 
 # Create global configuration instance

@@ -18,60 +18,40 @@ def register_install_python(server):
 
     @server.mcp.tool(
         name="install_python",
-        description="""
-# Task: Install tsc_python Environment
+        description="""Install tsc_python environment on target hosts.
 
-## Workflow
+## Prerequisites
+- Target hosts must be configured in inventory.yml first.
+- If tsc_tools is not installed, it will be installed first automatically.
 
-- Check host status (verify if tsc_tools and tsc_python are installed)
-- If tsc_tools is not installed, install tsc_tools first
-- If tsc_python is not installed, install tsc_python
+## Parameters
+- targets (required): List of target hostnames or IPs.
+- timeout (optional): Execution timeout in seconds.
 
-## Tool Calls
+## Return Value
+Returns installation results for each host including installed status and any errors.
 
-```json
-{
-  "name": "install_python",
-  "arguments": {
-    "targets": ["host1.example.com"],
-    "password": "my_psw", //Optional
-    "private_key": "path_to_key_file", //Optional
-    "timeout": 600, //Optional
-    "user": "admin", 
-    "port": 22 //Optional
-  }
-}
-```
 ## Decision Logic
-
 - If tsc_python is already installed → Skip installation
-- If tsc_python is not installed, → Execute install_python
+- If tsc_python is not installed → Execute installation
+
+## Usage Example
+{
+  "targets": ["web-server-01", "db-server-02"]
+}
 """,
     )
     @require_permission("install_python")
     def install_python(
         targets: List[str],
-        user: Optional[str] = None,
-        port: Optional[int] = None,
-        password: Optional[str] = None,
-        private_key: Optional[str] = None,
         timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
 
         logger.info(f"MCP tool call: install_python, targets={targets}")
-        credentials: Dict[str, Any] = {}
-        if user:
-            credentials["user"] = user
-        if port:
-            credentials["port"] = port
-        if password:
-            credentials["password"] = password
-        if private_key:
-            credentials["private_key"] = private_key
         task_id = str(uuid.uuid4())
         server.task_repo.create(task_id, "install_python", {"targets": targets})
         result = server.execution_service.install_python(
-            targets, credentials, timeout, task_id
+            targets, timeout, task_id
         )
         logger.info(f"MCP tool response: install_python, task_id={task_id}, result={result}")
         return result

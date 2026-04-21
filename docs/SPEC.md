@@ -4,7 +4,7 @@
 
 ### 1.1 Runtime Environment
 
-- **Python Version**: `3.13`. A virtual environment is provided at the project root: `.venv`(use `source .venv/bin/activate` to active it.).
+- **Python Version**: `3.13`(/home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3).
 - **Local Bash**: Version `5` or higher.
 - **Target Host Bash**: Version `4` or higher.
 
