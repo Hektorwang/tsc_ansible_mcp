@@ -57,6 +57,7 @@ Returns complete execution results including rc, stdout, and stderr for each hos
         result = server.execution_service.execute_shell(
             targets, command, timeout, task_id
         )
-        logger.info(f"MCP tool response: ansible_shell, task_id={task_id}, result={result}")
+        logger.info(
+            f"MCP tool response: ansible_shell, task_id={task_id}, result={result}"
+        )
         return result
-

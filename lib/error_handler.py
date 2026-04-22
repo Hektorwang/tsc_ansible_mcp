@@ -85,19 +85,25 @@ class ErrorHandler:
         """Handle exception and return unified error response."""
         if isinstance(exception, PermissionError):
             self.logger.exception(f"{context} Permission error: {exception}")
-            return self.permission_denied(f"{context} Insufficient permission: {str(exception)}")
+            return self.permission_denied(
+                f"{context} Insufficient permission: {str(exception)}"
+            )
         elif isinstance(exception, ValueError):
             self.logger.exception(f"{context} Parameter error: {exception}")
             return self.invalid_params(f"{context} Invalid parameter: {str(exception)}")
         elif isinstance(exception, FileNotFoundError):
             self.logger.exception(f"{context} Resource not found error: {exception}")
-            return self.file_not_found(f"{context} Resource not found: {str(exception)}")
+            return self.file_not_found(
+                f"{context} Resource not found: {str(exception)}"
+            )
         elif isinstance(exception, TimeoutError):
             self.logger.exception(f"{context} Timeout error: {exception}")
             return self.timeout(f"{context} Operation timed out: {str(exception)}")
         elif isinstance(exception, ConnectionError):
             self.logger.exception(f"{context} Connection error: {exception}")
-            return self.connection_error(f"{context} Connection failed: {str(exception)}")
+            return self.connection_error(
+                f"{context} Connection failed: {str(exception)}"
+            )
         else:
             self.logger.exception(f"{context} Error occurred: {exception}")
             return create_error_response(
@@ -105,7 +111,9 @@ class ErrorHandler:
             )
 
     @classmethod
-    def permission_denied(cls, message: str = "Insufficient permission") -> Dict[str, Any]:
+    def permission_denied(
+        cls, message: str = "Insufficient permission"
+    ) -> Dict[str, Any]:
         """Return permission error response."""
         return create_error_response("PERMISSION_DENIED", message)
 
@@ -135,12 +143,16 @@ class ErrorHandler:
         return create_error_response("HOST_UNREACHABLE", message)
 
     @classmethod
-    def ssh_auth_failed(cls, message: str = "SSH authentication failed") -> Dict[str, Any]:
+    def ssh_auth_failed(
+        cls, message: str = "SSH authentication failed"
+    ) -> Dict[str, Any]:
         """Return SSH authentication failed error response."""
         return create_error_response("SSH_AUTH_FAILED", message)
 
     @classmethod
-    def high_risk_command(cls, message: str = "High-risk command blocked") -> Dict[str, Any]:
+    def high_risk_command(
+        cls, message: str = "High-risk command blocked"
+    ) -> Dict[str, Any]:
         """Return high-risk command error response."""
         return create_error_response("HIGH_RISK_COMMAND", message)
 
@@ -150,7 +162,9 @@ class ErrorHandler:
         return create_error_response("FILE_NOT_FOUND", message)
 
     @classmethod
-    def python_install_failed(cls, message: str = "Python installation failed") -> Dict[str, Any]:
+    def python_install_failed(
+        cls, message: str = "Python installation failed"
+    ) -> Dict[str, Any]:
         """Return Python installation failed error response."""
         return create_error_response("PYTHON_INSTALL_FAILED", message)
 

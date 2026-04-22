@@ -38,7 +38,7 @@ Returns the execution result data. If status='failed', returns failed hosts with
     ) -> Dict[str, Any]:
 
         logger.info(f"MCP tool call: get_result, task_id={task_id}, status={status}")
-        
+
         task_data = server.task_repo.get(task_id)
 
         if task_data is None:
@@ -91,16 +91,16 @@ Returns detailed results (rc, stdout, stderr) for all hosts that failed the task
     ) -> Dict[str, Any]:
 
         logger.info(f"MCP tool call: get_failed_results, task_id={task_id}")
-        
+
         task_data = server.task_repo.get(task_id)
-        
+
         if task_data is None:
             return {
                 "task_id": task_id,
                 "status": "not_found",
                 "message": f"Task {task_id} not found",
             }
-        
+
         result = task_data.get("result")
         if result is None:
             return {
@@ -109,13 +109,13 @@ Returns detailed results (rc, stdout, stderr) for all hosts that failed the task
                 "failed_hosts": {},
                 "total_failed": 0,
             }
-        
+
         host_results = result.get("results", {})
         success_hosts = set(result.get("success_hosts", []))
         failed_results = {
             h: r for h, r in host_results.items() if h not in success_hosts
         }
-        
+
         return {
             "task_id": task_id,
             "status": result.get("status"),

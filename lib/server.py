@@ -4,15 +4,17 @@ Unified service module
 Unified service entry for MCP + REST API
 """
 
+# pylint: disable=unused-argument,wrong-import-position,import-outside-toplevel
+
 import json
 import uuid
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastmcp import FastMCP
 
+from lib.api.routes import packages
 from lib.auth import AuthMiddleware
 from lib.config import Config
 from lib.database import ContextRepository, Database, TaskRepository
@@ -21,22 +23,20 @@ from lib.execution_service import ExecutionService
 from lib.executor import Executor
 from lib.inventory_manager import InventoryManager
 from lib.mcp_tools import register_mcp_tools
-from lib.permission import require_permission
-from lib.playbook_scanner import PlaybookScanner
-from lib.tsc_logger import get_logger
-
-logger = get_logger()
-
-
+from lib.middleware import MCPAuthorizationMiddleware
 from lib.models import (
     AddInventoryRequest,
     CopyRequest,
-    CredentialsModel,
     FetchRequest,
     HostRequest,
     PlaybookRequest,
     ShellRequest,
 )
+from lib.permission import require_permission
+from lib.playbook_scanner import PlaybookScanner
+from lib.tsc_logger import get_logger, tsc_logger
+
+logger = get_logger()
 
 
 class Server:
@@ -98,11 +98,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         self.inventory_manager = InventoryManager()
         self.executor = Executor(self.config, self.inventory_manager)
         self.auth = AuthMiddleware(self.config)
-        # Set global auth instance for permission check decorator
         Server._auth_instance = self.auth
-        # Update log configuration
-        from lib.tsc_logger import tsc_logger
-
         tsc_logger.update_config(self.config._data)
         self.playbook_scanner = PlaybookScanner(self.config)
         self.mcp = FastMCP(
@@ -121,18 +117,24 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
     def _register_mcp_tools(self) -> None:
         """Register MCP tools."""
+        logger.info("Starting static MCP tool registration...")
         register_mcp_tools(self)
+        logger.info("Static MCP tools registered successfully")
 
     def _register_dynamic_playbook_tools(self) -> None:
         """Dynamically register playbook tools."""
+        logger.info("Starting dynamic playbook tool registration...")
         tool_definitions = self.playbook_scanner.scan_playbooks()
+        logger.info(f"Found {len(tool_definitions)} playbook definitions to register")
 
         for tool_def in tool_definitions:
             tool_name = tool_def["name"]
             tool_description = tool_def["description"]
             playbook_name = tool_name.replace("playbook_", "")
 
-            def make_playbook_tool(playbook_name: str) -> Callable[..., Dict[str, Any]]:
+            def make_playbook_tool(
+                playbook_name: str,
+            ) -> Callable[..., Dict[str, Any]]:
                 @require_permission(f"playbook_{playbook_name}")
                 def playbook_tool(
                     targets: List[str],
@@ -141,7 +143,9 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                 ) -> Dict[str, Any]:
 
                     logger.info(
-                        f"MCP tool call: playbook_{playbook_name}, targets={targets}"
+                        "MCP tool call: playbook_%s, targets=%s",
+                        playbook_name,
+                        targets,
                     )
                     parsed_extravars: Optional[Dict[str, Any]] = None
                     if extravars is not None:
@@ -153,7 +157,8 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
                         else:
                             parsed_extravars = extravars
                     task_id = str(uuid.uuid4())
-                    self.task_repo.create(task_id, playbook_name, {"targets": targets})
+                    params = {"targets": targets}
+                    self.task_repo.create(task_id, playbook_name, params)
                     return self.execution_service.execute_playbook(
                         playbook_name,
                         targets,
@@ -164,16 +169,20 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
                 return playbook_tool
 
-            tool_func: Callable[..., Dict[str, Any]] = make_playbook_tool(playbook_name)
+            tool_func = make_playbook_tool(
+                playbook_name,
+            )  # type: Callable[..., Dict[str, Any]]
             tool_func.__name__ = tool_name
             tool_func.__doc__ = tool_description
 
-            decorated_tool = self.mcp.tool(
+            self.mcp.tool(
                 name=tool_name,
                 description=tool_description,
             )(tool_func)
 
             logger.info(f"Registered playbook tool: {tool_name}")
+
+        logger.info(f"Total dynamic playbook tools registered: {len(tool_definitions)}")
 
     def _create_fastapi_app(self) -> FastAPI:
         app = FastAPI(
@@ -211,7 +220,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             )
             return result
 
-        @app.get("/api/v1/executor/tasks/{task_id}", summary="Query task status")
+        @app.get(
+            "/api/v1/executor/tasks/{task_id}",
+            summary="Query task status",
+        )
         async def get_task(
             task_id: str,
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
@@ -219,7 +231,10 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             task = self.task_repo.get(task_id)
             if task:
                 return task
-            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Task not found: {task_id}",
+            )
 
         @app.get("/api/v1/executor/tasks", summary="Query task list")
         async def list_tasks(
@@ -235,8 +250,14 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             user_info: Dict[str, Any] = Depends(self.auth.verify_request),
         ) -> Dict[str, str]:
             if self.task_repo.delete(task_id):
-                return {"status": "success", "message": f"Task {task_id} deleted"}
-            raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+                return {
+                    "status": "success",
+                    "message": f"Task {task_id} deleted",
+                }
+            raise HTTPException(
+                status_code=404,
+                detail=f"Task not found: {task_id}",
+            )
 
         @app.get("/api/v1/executor/stats", summary="Task statistics")
         async def get_stats(
@@ -271,7 +292,11 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             self.task_repo.create(
                 task_id,
                 "ansible_copy",
-                {"targets": request.targets, "src": request.src, "dest": request.dest},
+                {
+                    "targets": request.targets,
+                    "src": request.src,
+                    "dest": request.dest,
+                },
             )
             result = self.execution_service.ansible_copy(
                 targets=request.targets,
@@ -295,7 +320,11 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             self.task_repo.create(
                 task_id,
                 "ansible_fetch",
-                {"targets": request.targets, "src": request.src, "dest": request.dest},
+                {
+                    "targets": request.targets,
+                    "src": request.src,
+                    "dest": request.dest,
+                },
             )
             result = self.execution_service.ansible_fetch(
                 targets=request.targets,
@@ -386,30 +415,17 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
         async def health_check() -> Dict[str, str]:
             return {"status": "healthy"}
 
-        # Integrate package management routes
-        from lib.api.routes import packages
-
         app.include_router(packages.router)
 
         return app
 
     def get_asgi_app(self):
-        """Get ASGI application, mount MCP to FastAPI"""
-        # Create MCP application (Streamable HTTP transport)
-        # http_app(path="/") sets MCP endpoint to root path
-        # Then we mount it to FastAPI at /mcp path
+        """Get ASGI application, mount MCP to FastAPI."""
         mcp_app = self.mcp.http_app(path="/", transport="streamable-http")
-
-        from lib.middleware import MCPAuthorizationMiddleware
-
         self.app.router.lifespan_context = mcp_app.router.lifespan_context
 
-        # Wrap MCP application with authorization middleware
         authorized_mcp_app = MCPAuthorizationMiddleware(mcp_app, self.auth)
 
-        # Mount MCP application to FastAPI application at /mcp path
-        # This makes MCP endpoints at http://host:port/mcp
-        # REST API endpoints at http://host:port/api/v1/...
         self.app.mount("/mcp", authorized_mcp_app)
 
         return self.app

@@ -44,9 +44,7 @@ If tsc_tools or tsc_python are not installed, use the bootstrap_tsc_environment 
         logger.info(f"MCP tool call: check_host_status, targets={targets}")
         task_id = str(uuid.uuid4())
         server.task_repo.create(task_id, "check_host_status", {"targets": targets})
-        result = server.execution_service.check_host_status(
-            targets, timeout, task_id
-        )
+        result = server.execution_service.check_host_status(targets, timeout, task_id)
         logger.info(
             f"MCP tool response: check_host_status, task_id={task_id}, result={result}"
         )

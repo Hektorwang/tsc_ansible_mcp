@@ -7,10 +7,27 @@ Defines data models for all requests and responses, as well as database models
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Column, DateTime, String, Text
+from sqlalchemy import JSON, Column, DateTime, Integer, String, Text
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
+
+
+class Host(Base):
+    """Host inventory model."""
+
+    __tablename__ = "hosts"
+
+    host = Column(String, primary_key=True, index=True)
+    ansible_host = Column(String, nullable=False)
+    ansible_port = Column(Integer, default=22)
+    ansible_user = Column(String, default="root")
+    ansible_password = Column(String, nullable=True)
+    ansible_old_password = Column(String, nullable=True)
+    ansible_private_key = Column(String, nullable=True)
+    ansible_python_interpreter = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=False)
 
 
 class Task(Base):
@@ -49,33 +66,49 @@ class ShellRequest(BaseModel):
     targets: List[str] = Field(
         ..., description="List of target host IPs", min_length=1, max_length=100
     )
-    command: str = Field(..., description="Command content", min_length=1, max_length=1000)
+    command: str = Field(
+        ..., description="Command content", min_length=1, max_length=1000
+    )
     credentials: Optional[CredentialsModel] = None
-    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
+    timeout: Optional[int] = Field(
+        None, description="Timeout in seconds", ge=1, le=3600
+    )
 
 
 class CopyRequest(BaseModel):
     targets: List[str] = Field(
         ..., description="List of target host IPs", min_length=1, max_length=100
     )
-    src: str = Field(..., description="Local source file path", min_length=1, max_length=500)
-    dest: str = Field(..., description="Remote destination path", min_length=1, max_length=500)
+    src: str = Field(
+        ..., description="Local source file path", min_length=1, max_length=500
+    )
+    dest: str = Field(
+        ..., description="Remote destination path", min_length=1, max_length=500
+    )
     credentials: Optional[CredentialsModel] = None
     mode: Optional[str] = Field(None, description="File permissions")
     owner: Optional[str] = Field(None, description="File owner")
     group: Optional[str] = Field(None, description="File group")
-    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
+    timeout: Optional[int] = Field(
+        None, description="Timeout in seconds", ge=1, le=3600
+    )
 
 
 class FetchRequest(BaseModel):
     targets: List[str] = Field(
         ..., description="List of target host IPs", min_length=1, max_length=100
     )
-    src: str = Field(..., description="Remote source file path", min_length=1, max_length=500)
-    dest: str = Field(..., description="Local destination directory", min_length=1, max_length=500)
+    src: str = Field(
+        ..., description="Remote source file path", min_length=1, max_length=500
+    )
+    dest: str = Field(
+        ..., description="Local destination directory", min_length=1, max_length=500
+    )
     credentials: Optional[CredentialsModel] = None
     flat: bool = False
-    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
+    timeout: Optional[int] = Field(
+        None, description="Timeout in seconds", ge=1, le=3600
+    )
 
 
 class PlaybookRequest(BaseModel):
@@ -87,7 +120,9 @@ class PlaybookRequest(BaseModel):
     )
     credentials: Optional[CredentialsModel] = None
     extravars: Optional[Dict[str, Any]] = None
-    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
+    timeout: Optional[int] = Field(
+        None, description="Timeout in seconds", ge=1, le=3600
+    )
 
 
 class HostRequest(BaseModel):
@@ -95,7 +130,9 @@ class HostRequest(BaseModel):
         ..., description="List of target host IPs", min_length=1, max_length=100
     )
     credentials: Optional[CredentialsModel] = None
-    timeout: Optional[int] = Field(None, description="Timeout in seconds", ge=1, le=3600)
+    timeout: Optional[int] = Field(
+        None, description="Timeout in seconds", ge=1, le=3600
+    )
 
 
 class AddInventoryRequest(BaseModel):

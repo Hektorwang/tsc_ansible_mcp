@@ -37,13 +37,17 @@ class PlaybookScanner:
         for playbook_file in sorted(self.playbooks_dir.glob("*.yml")):
             md_file = playbook_file.with_suffix(".md")
             if not md_file.exists():
-                logger.warning(f"MD instruction file not found for {playbook_file.name}, skipping")
+                logger.warning(
+                    f"MD instruction file not found for {playbook_file.name}, skipping"
+                )
                 continue
 
             try:
                 md_content = md_file.read_text(encoding="utf-8")
                 playbook_info = self._parse_md_file(md_content, playbook_file.stem)
-                tool_def = self._generate_tool_definition(playbook_file.stem, playbook_info)
+                tool_def = self._generate_tool_definition(
+                    playbook_file.stem, playbook_info
+                )
                 tool_definitions.append(tool_def)
             except Exception as e:
                 logger.error(f"Failed to process playbook {playbook_file.name}: {e}")
@@ -85,11 +89,19 @@ class PlaybookScanner:
             elif title == "Parameters":
                 info["parameters"] = self._parse_parameters(content)
             elif title == "Use Cases":
-                info["use_cases"] = [line.strip("- ").strip() for line in content.split("\n") if line.strip().startswith("-")]
+                info["use_cases"] = [
+                    line.strip("- ").strip()
+                    for line in content.split("\n")
+                    if line.strip().startswith("-")
+                ]
             elif title == "Example":
                 info["example"] = content
             elif title == "Notes":
-                info["notes"] = [line.strip("- ").strip() for line in content.split("\n") if line.strip().startswith("-")]
+                info["notes"] = [
+                    line.strip("- ").strip()
+                    for line in content.split("\n")
+                    if line.strip().startswith("-")
+                ]
 
         return info
 
@@ -108,18 +120,24 @@ class PlaybookScanner:
             if not line.startswith("-"):
                 continue
 
-            match = re.match(r"-\s+(\w+)\s*\((\w+),\s*(required|optional)\):\s*(.+)", line)
+            match = re.match(
+                r"-\s+(\w+)\s*\((\w+),\s*(required|optional)\):\s*(.+)", line
+            )
             if match:
-                params.append({
-                    "name": match.group(1),
-                    "type": match.group(2),
-                    "required": match.group(3) == "required",
-                    "description": match.group(4),
-                })
+                params.append(
+                    {
+                        "name": match.group(1),
+                        "type": match.group(2),
+                        "required": match.group(3) == "required",
+                        "description": match.group(4),
+                    }
+                )
 
         return params
 
-    def _generate_tool_definition(self, name: str, info: Dict[str, Any]) -> Dict[str, Any]:
+    def _generate_tool_definition(
+        self, name: str, info: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Generate MCP tool definition.
 
         Args:
@@ -208,6 +226,12 @@ class PlaybookScanner:
             elif param_type == "integer":
                 properties[param["name"]] = {
                     "type": "integer",
+                    "description": f"{param['description']} ({'required' if param['required'] else 'optional'})",
+                }
+            elif param_type in ("list", "array"):
+                properties[param["name"]] = {
+                    "type": "array",
+                    "items": {"type": "object"},
                     "description": f"{param['description']} ({'required' if param['required'] else 'optional'})",
                 }
 

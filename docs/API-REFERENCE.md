@@ -625,7 +625,114 @@ GET /api/v1/executor/stats
 }
 ```
 
-### 2.17 健康检查
+### 2.17 包管理接口
+
+包管理接口用于提供安装包的下载、列表和缓存刷新功能。这些端点**无需认证**，供目标主机在 bootstrap 过程中使用。
+
+#### 2.17.1 下载安装包
+
+下载指定类型的最新安装包，支持按发行版和架构过滤。
+
+**请求**:
+
+```http
+GET /api/v1/packages/download?pkg_type={pkg_type}&distro={distro}&arch={arch}
+```
+
+**查询参数**:
+
+| 参数     | 类型   | 必填 | 说明                           |
+| -------- | ------ | ---- | ------------------------------ |
+| pkg_type | string | 是   | 包类型（如 tsc_tools, tsc_python） |
+| distro   | string | 否   | 发行版 ID（如 RedHat, Debian, Euler） |
+| arch     | string | 否   | 架构（如 x86_64, aarch64）     |
+
+**请求示例**:
+
+```bash
+curl -O -J "http://localhost:8500/api/v1/packages/download?pkg_type=tsc_tools&distro=FitServerOS&arch=x86_64"
+```
+
+**响应**:
+
+- 成功：返回包文件内容（Content-Type: application/x-sh）
+- 404：未找到匹配的包
+- 500：服务器内部错误
+
+**版本选择逻辑**:
+
+系统使用**语义化版本比较**自动选择最新版本：
+- `2.0.3.beta10` > `2.0.3.beta9`（数字比较，非字符串）
+- `2.0.3` > `2.0.3.beta10`（正式版 > 预发布版）
+- `2.0.3.rc1` > `2.0.3.beta10`（rc > beta）
+
+#### 2.17.2 列出可用包
+
+列出指定类型的所有可用包。
+
+**请求**:
+
+```http
+GET /api/v1/packages/list/{pkg_type}
+```
+
+**路径参数**:
+
+| 参数     | 类型   | 必填 | 说明                           |
+| -------- | ------ | ---- | ------------------------------ |
+| pkg_type | string | 是   | 包类型（如 tsc_tools, tsc_python） |
+
+**响应示例**:
+
+```json
+{
+  "packages": [
+    {
+      "filename": "tsc_tools-2.0.3.beta10-noarch-20260421.sh",
+      "path": "/path/to/tsc_tools-2.0.3.beta10-noarch-20260421.sh"
+    },
+    {
+      "filename": "tsc_tools-2.0.3.beta9-noarch-20260415.sh",
+      "path": "/path/to/tsc_tools-2.0.3.beta9-noarch-20260415.sh"
+    }
+  ],
+  "message": "Success"
+}
+```
+
+#### 2.17.3 刷新包缓存
+
+刷新包缓存，重新扫描包目录。
+
+**请求**:
+
+```http
+POST /api/v1/packages/refresh
+```
+
+**响应示例**:
+
+```json
+{
+  "message": "Cache refreshed successfully",
+  "packages": {
+    "tsc_tools": [
+      {
+        "filename": "tsc_tools-2.0.3.beta10-noarch-20260421.sh",
+        "path": "/path/to/tsc_tools-2.0.3.beta10-noarch-20260421.sh"
+      }
+    ],
+    "tsc_python": [
+      {
+        "filename": "tsc_python-0.9.7-Euler-x86_64-20260408.sh",
+        "path": "/path/to/tsc_python-0.9.7-Euler-x86_64-20260408.sh"
+      }
+    ]
+  }
+}
+```
+
+### 2.18 健康检查
 
 检查服务健康状态。
 

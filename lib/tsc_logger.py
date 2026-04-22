@@ -93,11 +93,15 @@ class TscLogger:
 
     def log_task_end(self, task_id: str, status: str, **context):
         """Log task end."""
-        self.log_with_context("INFO", f"Task ended: {status}", task_id=task_id, **context)
+        self.log_with_context(
+            "INFO", f"Task ended: {status}", task_id=task_id, **context
+        )
 
     def log_task_error(self, task_id: str, error: str, **context):
         """Log task error."""
-        self.log_with_context("ERROR", f"Task error: {error}", task_id=task_id, **context)
+        self.log_with_context(
+            "ERROR", f"Task error: {error}", task_id=task_id, **context
+        )
 
     def log_performance(self, operation: str, duration: float, **context):
         """Log performance information."""

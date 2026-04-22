@@ -16,6 +16,7 @@ MCP_Service -> Ansible-runner -> SSH -> Hosts
 | MCP Service | 提供 LLM 调用接口        | Python 3.13, FastMCP, FastAPI |
 | Ansible     | 实际执行远程操作的引擎   | ansible-core, ansible-runner  |
 | SQLite      | 保存任务执行状态         | sqlite3                       |
+| Package Manager | 安装包扫描、版本管理和分发 | Python, packaging           |
 
 ## 2. 数据流向
 
@@ -41,7 +42,7 @@ LLM/CLI/API (返回结果)
 
 ### 2.2 环境自举流程
 
-使用一个预置的 playbook 实现
+使用一个预置的 playbook 实现，通过内置的包管理 API 分发安装包，无需 Nginx。
 
 ```text
 目标主机 (无Python)
@@ -50,11 +51,25 @@ detect_environment (检测环境)
     ↓
 选择安装包 (根据架构/发行版)
     ↓
-Nginx (提供安装包)
+Package Manager API (提供安装包下载)
     ↓
 目标主机 (下载并安装Python)
     ↓
 验证安装 (install_python)
+```
+
+**包管理 API 流程**:
+
+```text
+目标主机请求 /api/v1/packages/download
+    ↓
+PackageScanner 扫描包目录
+    ↓
+按 distro/arch 过滤匹配包
+    ↓
+语义化版本排序选择最新包
+    ↓
+返回包文件内容
 ```
 
 ## 3. 数据存储设计
@@ -569,9 +584,83 @@ ansible_execution_rotation = "50 MB"
 2026-04-11 10:00:05 | INFO | ==============================================
 ```
 
-### 5.4 结果摘要模式架构
+### 5.4 包管理架构
 
 #### 5.4.1 架构设计
+
+```
+API Request
+    ↓
+PackageManager (lib/package_manager/manager.py)
+    ↓
+PackageScanner (lib/package_manager/scanner.py)
+    ↓
+Semantic Version Sort (packaging.version.parse)
+    ↓
+Package File
+```
+
+#### 5.4.2 核心组件
+
+| 组件              | 文件                           | 功能                     |
+| ----------------- | ------------------------------ | ------------------------ |
+| PackageManager    | `lib/package_manager/manager.py` | 包管理入口，协调扫描和获取 |
+| PackageScanner    | `lib/package_manager/scanner.py` | 包扫描、过滤、版本排序   |
+| PackageNormalizer | `lib/package_manager/normalizer.py` | 发行版和架构归一化       |
+| API Routes        | `lib/api/routes/packages.py`   | REST API 端点            |
+
+#### 5.4.3 版本排序机制
+
+**问题**：字符串字典序排序导致 `beta10` < `beta9`
+
+**解决方案**：使用 `packaging.version.parse` 进行语义化版本比较
+
+```python
+from packaging.version import parse as parse_version
+
+# 语义化版本比较
+parse_version("2.0.3.beta10") > parse_version("2.0.3.beta9")  # True
+parse_version("2.0.3") > parse_version("2.0.3.beta10")        # True
+parse_version("2.0.3.rc1") > parse_version("2.0.3.beta10")    # True
+```
+
+**版本比较规则**：
+
+| 比较场景 | 结果 | 说明 |
+| -------- | ---- | ---- |
+| `2.0.3.beta10` vs `2.0.3.beta9` | beta10 > beta9 | 数字比较 |
+| `2.0.3` vs `2.0.3.beta10` | 正式版 > beta | 预发布版 < 正式版 |
+| `2.0.3.rc1` vs `2.0.3.beta10` | rc > beta | rc 优先级高于 beta |
+| `2.0.10` vs `2.0.3` | 10 > 3 | 数字比较 |
+
+**包文件名格式**：
+
+```
+{pkg_type}-{version}-{distro}-{arch}-{date}.sh
+
+示例:
+tsc_tools-2.0.3.beta10-noarch-20260421.sh
+tsc_python-0.9.7-Euler-x86_64-20260408.sh
+```
+
+**过滤逻辑**：
+
+1. **noarch 包**：匹配任何 distro 和 arch
+2. **架构匹配**：arch 参数必须在文件名中（noarch 除外）
+3. **发行版匹配**：distro 参数必须在文件名中（noarch 除外）
+4. **版本排序**：使用语义化版本比较选择最新版本
+
+#### 5.4.4 API 端点
+
+| 端点 | 方法 | 说明 |
+| ---- | ---- | ---- |
+| `/api/v1/packages/download` | GET | 下载最新包（无需认证） |
+| `/api/v1/packages/list/{pkg_type}` | GET | 列出可用包 |
+| `/api/v1/packages/refresh` | POST | 刷新包缓存 |
+
+### 5.5 结果摘要模式架构
+
+#### 5.5.1 架构设计
 
 ```
 Executor

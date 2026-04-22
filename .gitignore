@@ -9,6 +9,8 @@ __pycache__
 /galaxy_cache
 /retries/*
 /sample
+/test/*
+/tests/*
 /tmp/*
 /tsc_install/*
 etc/jwt_issued_tokens.json

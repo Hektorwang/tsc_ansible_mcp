@@ -71,19 +71,29 @@ class Config:
         auth_enabled = self.get("auth.enabled", False)
         if auth_enabled:
             # Check JWT secret key file
-            secret_key_file = self.get("auth.jwt_secret_key_file", "etc/jwt_secret_key.txt")
+            secret_key_file = self.get(
+                "auth.jwt_secret_key_file", "etc/jwt_secret_key.txt"
+            )
             if not secret_key_file:
-                logger.warning("JWT secret key file not configured, will use default path")
+                logger.warning(
+                    "JWT secret key file not configured, will use default path"
+                )
 
             # Check JWT issued tokens file
-            issued_tokens_file = self.get("auth.jwt_issued_tokens_file", "etc/jwt_issued_tokens.json")
+            issued_tokens_file = self.get(
+                "auth.jwt_issued_tokens_file", "etc/jwt_issued_tokens.json"
+            )
             if not issued_tokens_file:
-                logger.warning("JWT issued tokens file not configured, will use default path")
+                logger.warning(
+                    "JWT issued tokens file not configured, will use default path"
+                )
 
             # Check tool permissions
             tool_permissions = self.get("auth.tool_permissions", {})
             if not tool_permissions:
-                logger.warning("Tool permissions not configured, will use default permissions")
+                logger.warning(
+                    "Tool permissions not configured, will use default permissions"
+                )
             else:
                 # Validate each role has at least one permission
                 for role, permissions in tool_permissions.items():
@@ -93,12 +103,16 @@ class Config:
         # Validate playbooks path
         playbooks_path = self.get("playbooks.path", "playbooks")
         if not playbooks_path:
-            logger.warning("Playbooks path not configured, will use default 'playbooks'")
+            logger.warning(
+                "Playbooks path not configured, will use default 'playbooks'"
+            )
 
         # Validate tsc_repo settings
         base_url = self.get("tsc_repo.base_url")
         if base_url and not base_url.startswith(("http://", "https://")):
-            logger.warning(f"Invalid base_url format: {base_url}, should start with http:// or https://")
+            logger.warning(
+                f"Invalid base_url format: {base_url}, should start with http:// or https://"
+            )
 
     def _load(self) -> Dict[str, Any]:
         if self.path.exists():
@@ -350,7 +364,7 @@ class Config:
 
     def _scan_packages(self) -> None:
         """Scan and cache available packages from local repository.
-        
+
         This method runs only once during initialization to build package cache.
         """
         self._package_cache = {"tsc_python": {}, "tsc_tools": {}}

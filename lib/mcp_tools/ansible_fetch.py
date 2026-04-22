@@ -62,5 +62,7 @@ Returns complete execution results including rc, stdout, and stderr for each hos
         result = server.execution_service.ansible_fetch(
             targets, src, dest, flat, timeout, task_id
         )
-        logger.info(f"MCP tool response: ansible_fetch, task_id={task_id}, result={result}")
+        logger.info(
+            f"MCP tool response: ansible_fetch, task_id={task_id}, result={result}"
+        )
         return result

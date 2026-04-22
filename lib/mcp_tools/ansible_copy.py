@@ -59,5 +59,7 @@ Returns complete execution results including rc, stdout, and stderr for each hos
         result = server.execution_service.ansible_copy(
             targets, src, dest, timeout, task_id
         )
-        logger.info(f"MCP tool response: ansible_copy, task_id={task_id}, result={result}")
+        logger.info(
+            f"MCP tool response: ansible_copy, task_id={task_id}, result={result}"
+        )
         return result

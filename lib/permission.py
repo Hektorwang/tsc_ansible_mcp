@@ -40,14 +40,18 @@ def require_permission(tool_name: str):
 
                 # Allow all tools when authentication is disabled
                 if not auth.enabled:
-                    logger.debug(f"Authentication disabled, allowing tool call: Tool={tool_name}")
+                    logger.debug(
+                        f"Authentication disabled, allowing tool call: Tool={tool_name}"
+                    )
                     return func(*args, **kwargs)
 
                 role = get_current_role()
 
                 # Authentication enabled but user context not set, deny access
                 if not role:
-                    logger.warning(f"Tool call failed: User context not set, Tool={tool_name}")
+                    logger.warning(
+                        f"Tool call failed: User context not set, Tool={tool_name}"
+                    )
                     return {
                         "status": "error",
                         "message": "Authentication required: user context not set",
@@ -55,7 +59,9 @@ def require_permission(tool_name: str):
 
                 # Check permission
                 if not auth.jwt_utils.check_permission(role, tool_name):
-                    logger.warning(f"Insufficient tool permissions: Role={role}, Tool={tool_name}")
+                    logger.warning(
+                        f"Insufficient tool permissions: Role={role}, Tool={tool_name}"
+                    )
                     return {
                         "status": "error",
                         "message": f"Permission denied: role '{role}' cannot access tool '{tool_name}'",

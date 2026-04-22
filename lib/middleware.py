@@ -50,7 +50,9 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         request_id = id(request)
 
-        logger.debug(f"[{request_id}] Middleware started processing request: path={request.url.path}")
+        logger.debug(
+            f"[{request_id}] Middleware started processing request: path={request.url.path}"
+        )
 
         # Only process MCP endpoints
         if not request.url.path.startswith("/mcp"):
@@ -65,12 +67,55 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
 
         # If authentication is disabled, allow all requests
         if not self.auth.enabled:
-            logger.warning(
-                f"[{request_id}] Authentication disabled, allowing MCP request: path={request.url.path}"
+            logger.info(
+                f"[{request_id}] Authentication disabled, allowing MCP request: path={request.url.path}, method={request.method}"
             )
-            return await call_next(request)
+            if request.method == "POST":
+                body = await request.body()
+                try:
+                    request_data = json.loads(body)
+                    method_name = request_data.get("method")
+                    request_id_str = request_data.get("id")
+                    logger.info(
+                        f"[{request_id}] MCP request (auth disabled): method={method_name}, id={request_id_str}"
+                    )
+                    logger.info(
+                        f"[{request_id}] MCP request body: {json.dumps(request_data, ensure_ascii=False, indent=2)}"
+                    )
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    logger.info(
+                        f"[{request_id}] MCP request body (raw, not JSON): {body[:500]}"
+                    )
+            response = await call_next(request)
 
-        logger.info(f"[{request_id}] Authentication enabled, starting JWT token verification")
+            if request.method == "POST":
+                logger.info(
+                    f"[{request_id}] Response status: {response.status_code}, headers={dict(response.headers)}"
+                )
+                response_body = b""
+                async for chunk in response.body_iterator:
+                    response_body += chunk
+                if response_body:
+                    try:
+                        resp_data = json.loads(response_body.decode("utf-8"))
+                        logger.info(
+                            f"[{request_id}] MCP response body: {json.dumps(resp_data, ensure_ascii=False, indent=2)}"
+                        )
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        logger.info(
+                            f"[{request_id}] MCP response body (raw): {response_body[:2000].decode('utf-8', errors='replace')}"
+                        )
+                return Response(
+                    content=response_body,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                )
+
+            return response
+
+        logger.info(
+            f"[{request_id}] Authentication enabled, starting JWT token verification"
+        )
 
         # Extract JWT token
         authorization = request.headers.get("authorization", "")
@@ -135,7 +180,9 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
             if request.method == "POST":
                 # Read request body
                 body = await request.body()
-                logger.debug(f"[{request_id}] Request body read: length={len(body)}")
+                logger.info(
+                    f"[{request_id}] POST request body: size={len(body)}, content={body[:300]}"
+                )
 
                 try:
                     request_data = json.loads(body)
@@ -149,7 +196,12 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
                     # Process different types of MCP requests
                     if method == "tools/list":
                         # Tool list request needs filtering
-                        logger.info(f"[{request_id}] tools/list request detected, processing")
+                        logger.info(
+                            f"[{request_id}] tools/list request detected, processing"
+                        )
+                        logger.debug(
+                            f"[{request_id}] tools/list request full body: {json.dumps(request_data, ensure_ascii=False)}"
+                        )
                         response = await call_next(request)
                         return await self._filter_tools_list_response(
                             request_id, response, user_info
@@ -201,12 +253,15 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
 
                 except json.JSONDecodeError as e:
                     logger.error(f"[{request_id}] JSON parsing failed: {e}")
+                    logger.debug(f"[{request_id}] Raw request body that failed to parse: {body}")
 
             # Continue processing request
             response = await call_next(request)
 
             total_time = time.time() - start_time
-            logger.info(f"[{request_id}] Request processing completed, total time={total_time:.3f}s")
+            logger.info(
+                f"[{request_id}] Request processing completed, total time={total_time:.3f}s"
+            )
 
             return response
 
@@ -235,8 +290,11 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
         try:
             async for chunk in response.body_iterator:
                 response_body += chunk
+                logger.debug(f"[{request_id}] Read chunk: size={len(chunk)}")
         except Exception as e:
-            logger.error(f"[{request_id}] Failed to read response body: {e}", exc_info=True)
+            logger.error(
+                f"[{request_id}] Failed to read response body: {e}", exc_info=True
+            )
             return JSONResponse(
                 {
                     "jsonrpc": "2.0",
@@ -248,10 +306,11 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
                 status_code=500,
             )
 
-        logger.debug(f"[{request_id}] Response body length: {len(response_body)}")
+        logger.info(f"[{request_id}] Response body total size: {len(response_body)} bytes")
+        logger.debug(f"[{request_id}] Response body first 500 bytes: {response_body[:500]}")
 
         if not response_body:
-            logger.warning(f"[{request_id}] Response body is empty")
+            logger.error(f"[{request_id}] Response body is empty")
             return JSONResponse(
                 {"jsonrpc": "2.0", "error": {"code": 500, "message": "Empty response"}},
                 status_code=500,
@@ -263,7 +322,9 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
 
         try:
             response_text = response_body.decode("utf-8")
-            logger.debug(f"[{request_id}] Response text first 200 chars: {response_text[:200]}")
+            logger.debug(
+                f"[{request_id}] Response text first 200 chars: {response_text[:200]}"
+            )
 
             # Handle SSE (Server-Sent Events) format
             # SSE format: "event: message\ndata: {JSON}\n\n"
@@ -279,7 +340,9 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
                         break
 
                 if not json_line:
-                    logger.error(f"[{request_id}] No data line found in SSE format response")
+                    logger.error(
+                        f"[{request_id}] No data line found in SSE format response"
+                    )
                     return JSONResponse(
                         {
                             "jsonrpc": "2.0",
@@ -291,7 +354,9 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
                         status_code=500,
                     )
 
-                logger.debug(f"[{request_id}] Extracted SSE data line: {json_line[:200]}")
+                logger.debug(
+                    f"[{request_id}] Extracted SSE data line: {json_line[:200]}"
+                )
                 response_json = json.loads(json_line)
             else:
                 # Pure JSON format
@@ -328,7 +393,9 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
                 status_code=500,
             )
         except Exception as e:
-            logger.error(f"[{request_id}] Failed to process response: {e}", exc_info=True)
+            logger.error(
+                f"[{request_id}] Failed to process response: {e}", exc_info=True
+            )
             return JSONResponse(
                 {
                     "jsonrpc": "2.0",
@@ -341,13 +408,18 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
             )
 
         # Filter tool list
-        logger.debug(
-            f"[{request_id}] Response JSON: {json.dumps(response_json, ensure_ascii=False)[:500]}"
+        logger.info(
+            f"[{request_id}] Response JSON keys: {list(response_json.keys()) if isinstance(response_json, dict) else 'not a dict'}"
         )
 
         if "result" in response_json and "tools" in response_json["result"]:
             all_tools = response_json["result"]["tools"]
-            logger.debug(f"[{request_id}] Starting to filter tool list: total={len(all_tools)}")
+            logger.info(
+                f"[{request_id}] Starting to filter tool list: total={len(all_tools)}"
+            )
+            logger.debug(
+                f"[{request_id}] All tool names: {[t.get('name', 'unknown') for t in all_tools]}"
+            )
 
             filtered_tools = []
             for tool in all_tools:
@@ -364,6 +436,16 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
             logger.info(
                 f"[{request_id}] Tool list filtering completed: Role={role}, "
                 f"Total={len(all_tools)}, Filtered={len(filtered_tools)}"
+            )
+            logger.info(
+                f"[{request_id}] Filtered tool names: {[t.get('name', 'unknown') for t in filtered_tools]}"
+            )
+            logger.debug(
+                f"[{request_id}] Final filtered response JSON (first 1000 chars): {json.dumps(response_json, ensure_ascii=False)[:1000]}"
+            )
+        else:
+            logger.warning(
+                f"[{request_id}] No tools found in response JSON. Keys: {list(response_json.keys())}"
             )
 
         # Return filtered response, maintaining original format

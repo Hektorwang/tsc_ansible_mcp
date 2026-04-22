@@ -117,7 +117,9 @@ class Executor:
 
         file_path = target_dir / filename
         if isinstance(data, (dict, list)):
-            file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            file_path.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
         else:
             file_path.write_text(str(data), encoding="utf-8")
         logger.debug(f"Debug cache saved: {file_path}")
@@ -126,10 +128,14 @@ class Executor:
         """Install signal handlers to ensure locks are released."""
 
         def signal_handler(signum, frame):
-            logger.warning(f"[SIGNAL] Received signal {signum}, releasing host locks...")
+            logger.warning(
+                f"[SIGNAL] Received signal {signum}, releasing host locks..."
+            )
             with self._lock:
                 if self._current_task_hosts:
-                    logger.warning(f"[SIGNAL] Releasing locks: {self._current_task_hosts}")
+                    logger.warning(
+                        f"[SIGNAL] Releasing locks: {self._current_task_hosts}"
+                    )
                     for host in self._current_task_hosts:
                         if host in self._active_hosts:
                             self._active_hosts.remove(host)
@@ -310,7 +316,9 @@ class Executor:
                 resolved_playbook_path = playbook_file
                 # Cache playbook file in debug mode
                 if self.config.debug_enabled:
-                    playbook_content = resolved_playbook_path.read_text(encoding="utf-8")
+                    playbook_content = resolved_playbook_path.read_text(
+                        encoding="utf-8"
+                    )
                     self._cache_debug_file("playbook.yml", playbook_content)
             else:
                 resolved_playbook_path = tmpdir_path / "playbook.yml"
@@ -322,7 +330,9 @@ class Executor:
 
             logger.debug(f"Executing playbook: {resolved_playbook_path}")
             logger.debug(f"Inventory: {inventory_path}")
-            logger.info(f"Starting Ansible playbook execution: {resolved_playbook_path}")
+            logger.info(
+                f"Starting Ansible playbook execution: {resolved_playbook_path}"
+            )
             logger.info(f"Using inventory: {inventory_path}")
             logger.info(
                 f"Target hosts: {list(inventory.get('all', {}).get('hosts', {}).keys())}"
@@ -484,11 +494,7 @@ class Executor:
                     logger.debug(f"Host {host} stderr: {results[host]['stderr']}")
             elif event_type in ["runner_on_failed", "runner_on_unreachable"]:
                 res = event_data.get("res", {})
-                error_msg = (
-                    res.get("stderr")
-                    or res.get("msg")
-                    or str(event_data)
-                )
+                error_msg = res.get("stderr") or res.get("msg") or str(event_data)
                 results[host] = {
                     "rc": res.get("rc", result.rc),
                     "stdout": res.get("stdout", ""),
@@ -519,7 +525,9 @@ class Executor:
         if not skip_lock:
             acquired, busy_hosts = self._acquire_hosts(targets)
             if not acquired:
-                logger.warning(f"The following hosts are executing tasks, request rejected: {busy_hosts}")
+                logger.warning(
+                    f"The following hosts are executing tasks, request rejected: {busy_hosts}"
+                )
                 self._release_hosts(targets)
                 return {
                     "task_id": task_id or str(uuid.uuid4()),
@@ -712,7 +720,9 @@ class Executor:
                         if "unreachable" in event_type
                         else "task_failed"
                     )
-                    logger.warning(f"Host {host} task '{task}' execution failed: {error_msg}")
+                    logger.warning(
+                        f"Host {host} task '{task}' execution failed: {error_msg}"
+                    )
                     if host in results:
                         results[host]["error"] = error_msg
                         results[host]["error_task"] = task
@@ -822,7 +832,9 @@ class Executor:
         # Acquire host locks
         acquired, busy_hosts = self._acquire_hosts(targets)
         if not acquired:
-            logger.warning(f"The following hosts are executing tasks, request rejected: {busy_hosts}")
+            logger.warning(
+                f"The following hosts are executing tasks, request rejected: {busy_hosts}"
+            )
             return {
                 "task_id": task_id or str(uuid.uuid4()),
                 "status": "failed",
@@ -847,7 +859,9 @@ class Executor:
                 h for h, info in detect_result["results"].items() if info.get("error")
             ]
             if unreachable_hosts:
-                logger.warning(f"The following hosts are unreachable: {unreachable_hosts}")
+                logger.warning(
+                    f"The following hosts are unreachable: {unreachable_hosts}"
+                )
             reachable_hosts = [h for h in targets if h not in unreachable_hosts]
             if not reachable_hosts:
                 return {
@@ -875,7 +889,9 @@ class Executor:
                 if not info.get("error") and not info.get("python_installed")
             ]
             if hosts_need_python:
-                logger.warning(f"The following hosts need Python installed: {hosts_need_python}")
+                logger.warning(
+                    f"The following hosts need Python installed: {hosts_need_python}"
+                )
                 results = {}
                 for host in targets:
                     error_msg = "tsc_python is not installed on this host. Please run playbook_bootstrap_tsc_environment first to install the required environment."
@@ -970,7 +986,9 @@ class Executor:
                                 else "File transfer verification failed"
                             )
                         elif "Copy file to destination" in task:
-                            results[host]["stdout"] = f"File copied successfully: {dest}"
+                            results[host][
+                                "stdout"
+                            ] = f"File copied successfully: {dest}"
                 elif event.get("event") in [
                     "runner_on_failed",
                     "runner_on_unreachable",
@@ -1134,7 +1152,11 @@ class Executor:
             final_task_id = task_id or str(uuid.uuid4())
             return {
                 "task_id": final_task_id,
-                "status": "success" if all(r["rc"] == 0 for r in results.values()) else "failed",
+                "status": (
+                    "success"
+                    if all(r["rc"] == 0 for r in results.values())
+                    else "failed"
+                ),
                 "results": results,
             }
         finally:
@@ -1330,7 +1352,7 @@ class Executor:
                     for host in targets
                 },
             }
-        
+
         # 自动设置 bootstrap playbook 的 api_url
         logger.info(f"playbook 参数值: {playbook}")
         if playbook in ["bootstrap_tsc_environment", "bootstrap_tsc_environment.yml"]:
@@ -1344,7 +1366,7 @@ class Executor:
                 logger.info(f"自动设置 api_url: {api_url}")
         else:
             logger.info(f"不是 bootstrap playbook，跳过自动设置 api_url")
-        
+
         acquired, busy_hosts = self._acquire_hosts(targets)
         if not acquired:
             logger.warning(f"以下主机正在执行任务，拒绝请求: {busy_hosts}")
@@ -1433,7 +1455,7 @@ class Executor:
                 }
             final_task_id = task_id or str(uuid.uuid4())
             self._current_task_task_id = final_task_id
-            
+
             inventory = self._build_inventory(targets)
 
             start_time = time.time()

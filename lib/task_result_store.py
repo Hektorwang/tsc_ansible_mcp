@@ -124,7 +124,9 @@ class TaskResultStore:
         if status == "success":
             host_results = results.get("results", {})
             success_hosts = results.get("success_hosts", [])
-            success_results = {h: host_results[h] for h in success_hosts if h in host_results}
+            success_results = {
+                h: host_results[h] for h in success_hosts if h in host_results
+            }
             return {
                 "task_id": task_id,
                 "status": results.get("status"),

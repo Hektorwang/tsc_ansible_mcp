@@ -2,7 +2,7 @@
 
 ## 1. 产品概述
 
-本工具的目的: 可通过 LLM 传入`目标服务器 SSH 信息`, `要执行的操作`，通过 `FastMCP`, `FastAPI`, `ansible-runner` 作为基础设施对目标服务器进行操作.
+本工具的目的: 可通过 LLM 传入目标服务器 `IP`, `要执行的操作`，通过 `FastMCP`, `FastAPI`, `ansible-runner` 作为基础设施对目标服务器进行操作.
 
 ## 2. 核心功能需求
 
@@ -34,21 +34,85 @@
 - 自动识别架构(`uname -m`)和发行版(`cat /etc/os-release`)
 - 归一化映射(主配置文件): 架构 `arm64` -> `aarch64`, `amd64` -> `x86_64`; 发行版 `rhel/centos -> RedHat`，`ubuntu/debian -> Debian`
 - Python 安装包格式: `tsc_python-{version}-{distro}-{arch}-{date}.sh`
-- 幂等性检查: 安装前先 `which python3 || test -f /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3`
+- 幂等性检查: 安装前先 `test -f /home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3`
+- **包管理 API**: 内置包下载接口
 
-### 2.5 SSH 认证
+### 2.5 包管理
+
+#### 2.5.1 功能描述
+
+系统提供内置的包管理功能，通过 REST API 向目标主机分发安装包，替代外部 Nginx 文件服务。
+
+#### 2.5.2 核心功能
+
+1. **包扫描**
+   - 自动扫描指定目录下的 `.sh` 安装包文件
+   - 从文件名提取包类型、版本、发行版、架构信息
+   - 维护内存缓存，支持手动刷新
+
+2. **包过滤**
+   - 按包类型过滤（如 `tsc_tools`, `tsc_python`）
+   - 按发行版过滤（如 `RedHat`, `Debian`, `Euler`）
+   - 按架构过滤（如 `x86_64`, `aarch64`）
+   - `noarch` 包特殊处理：匹配任何架构
+   - 若包名不含发行版或 `allsystem`, 则匹配任意 distro
+
+3. **版本选择**
+   - 使用**语义化版本比较**自动选择最新版本
+   - 支持预发布版本（alpha, beta, rc）
+   - 正式版优先级高于预发布版
+   - 正确比较数字版本（`beta10` > `beta9`）
+
+4. **API 接口**
+   - `GET /api/v1/packages/download` - 下载最新包（无需认证）
+   - `GET /api/v1/packages/list/{pkg_type}` - 列出可用包
+   - `POST /api/v1/packages/refresh` - 刷新包缓存
+
+#### 2.5.3 包文件名格式
+
+```
+{pkg_type}-{version}-{distro}-{arch}-{date}.sh
+
+示例:
+tsc_tools-2.0.3.beta10-noarch-20260421.sh
+tsc_python-0.9.7-Euler-x86_64-20260408.sh
+```
+
+#### 2.5.4 版本比较规则
+
+| 场景                            | 结果        | 说明               |
+| ------------------------------- | ----------- | ------------------ |
+| `2.0.3.beta10` vs `2.0.3.beta9` | beta10 更新 | 数字 10 > 9        |
+| `2.0.3` vs `2.0.3.beta10`       | 正式版更新  | 预发布版 < 正式版  |
+| `2.0.3.rc1` vs `2.0.3.beta10`   | rc 更新     | rc 优先级高于 beta |
+| `2.0.10` vs `2.0.3`             | 2.0.10 更新 | 数字 10 > 3        |
+
+#### 2.5.5 非功能需求
+
+1. **性能**
+   - 包扫描应在服务启动时完成，不影响 API 响应速度
+   - 包文件读取使用流式传输，支持大文件
+
+2. **可靠性**
+   - 缓存机制避免重复扫描文件系统
+   - 支持手动刷新缓存应对包文件变化
+
+3. **安全性**
+   - 包下载接口无需认证（供目标主机 bootstrap 使用）
+   - 包列表和缓存刷新接口受认证保护
+
+### 2.6 SSH 认证
 
 按如下优先级, 失败后 fallback 到下一项:
 
-- 支持密码认证
-- 支持 `~/.ssh/config` 默认行为
-- SSH 密钥认证(操作系统默认)
+- 操作系统默认行为(`~/.ssh/config`, 密钥)
+- TODO: 支持密码认证, 对接 cmdb
 
-### 2.6 安全控制
+### 2.7 安全控制
 
 - 高危指令黑名单预拦截(`rm -rf /` 等)
 
-### 2.7 API 认证
+### 2.8 API 认证
 
 #### 2.7.1 认证机制
 
@@ -160,19 +224,12 @@
 | 工具名称            | 功能描述                                      | 对应 ansible 功能 |
 | ------------------- | --------------------------------------------- | ----------------- |
 | `check_host_status` | 检查主机状态(架构, 发行版, Python, tsc_tools) | raw               |
-| `install_tsc_tools` | 安装 `tsc_tools` 环境                         | raw               |
-| `install_python`    | 安装 `tsc_python` 环境                        | raw               |
 | `ansible_shell`     | 执行远程 Shell 命令                           | shell             |
 | `ansible_copy`      | 调用 ansible copy 模块，分发文件到远程主机    | copy              |
 | `ansible_fetch`     | 调用 ansible fetch 模块，从远程主机获取文件   | fetch             |
 | `list_playbooks`    | 列出可用的 playbook 文件，包含元数据说明      | -                 |
 | `ansible_playbook`  | 执行 playbook 文件                            | ansible-playbook  |
 | `get_task_status`   | 查询任务状态                                  | 无                |
-| `set_context`       | 设置上下文键值对                              | 无                |
-| `get_context`       | 获取上下文值                                  | 无                |
-| `delete_context`    | 删除指定的上下文键值对                        | 无                |
-| `list_contexts`     | 列出所有上下文键值对                          | 无                |
-| `clear_contexts`    | 清空所有上下文数据                            | 无                |
 
 ## 4. Playbook 元数据规范
 
@@ -349,8 +406,6 @@
 - `ansible_copy` - 文件分发
 - `ansible_fetch` - 文件获取
 - `check_host_status` - 主机状态检查
-- `install_python` - Python 安装
-- `install_tsc_tools` - tsc_tools 安装
 
 ## 8. 验证标准
 

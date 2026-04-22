@@ -201,7 +201,9 @@ class JWTUtils:
         Returns:
             Payload if verification successful, None otherwise.
         """
-        logger.debug(f"Starting JWT verification: token length={len(token)}, token prefix={token[:30]}...")
+        logger.debug(
+            f"Starting JWT verification: token length={len(token)}, token prefix={token[:30]}..."
+        )
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[JWT_ALGORITHM])
             if not self._is_token_in_issued_records(token, payload):
@@ -271,7 +273,9 @@ class JWTUtils:
                 )
                 return True
 
-        logger.debug(f"Permission match failed: role={role}, tool={tool_name}, no matching pattern")
+        logger.debug(
+            f"Permission match failed: role={role}, tool={tool_name}, no matching pattern"
+        )
         return False
 
     def _match_permission(self, pattern: str, tool_name: str) -> bool:
@@ -284,7 +288,9 @@ class JWTUtils:
         Returns:
             True if matched successfully.
         """
-        logger.debug(f"Matching permission pattern: pattern={pattern}, tool={tool_name}")
+        logger.debug(
+            f"Matching permission pattern: pattern={pattern}, tool={tool_name}"
+        )
 
         if pattern == "*":
             logger.debug(f"Wildcard match: pattern={pattern}")
@@ -323,5 +329,7 @@ class JWTUtils:
         """
         self.secret_key = self._generate_secret_key()
         self.secret_key_file.write_text(self.secret_key)
-        logger.warning("Regenerated JWT secret key, all issued JWTs will be invalidated")
+        logger.warning(
+            "Regenerated JWT secret key, all issued JWTs will be invalidated"
+        )
         return self.secret_key
