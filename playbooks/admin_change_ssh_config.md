@@ -4,6 +4,9 @@
 Change SSHD port and/or root password on target hosts with automatic rollback on failure.
 Supports changing port only, password only, or both. Old port is read from inventory.yml automatically.
 
+## tag
+`security` `security enforce` `security enforcing` `ssh port` `ssh password`
+
 ## Parameters
 - new_port (int, optional): New SSHD port number
 - root_password (string, optional): New root password. Must be at least 8 characters and contain digits, letters, and special symbols

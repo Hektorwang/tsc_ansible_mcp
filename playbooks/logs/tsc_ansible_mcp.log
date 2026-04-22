@@ -26,3 +26,9 @@
 2026-04-23 02:24:38 | INFO     | lib.database:__init__:47 | Database initialized: /home/workspace/tsc_ansible_mcp/logs/tsc_ansible_mcp.db
 2026-04-23 02:24:38 | INFO     | lib.database:export_to_yaml:416 | Exported 1 hosts to inventory.yml
 2026-04-23 02:24:38 | INFO     | lib.database:update_host_credentials:628 | Updated host credentials: 192.168.19.38
+2026-04-23 02:35:13 | INFO     | lib.task_result_store:__init__:53 | Task result storage directory: /home/workspace/tsc_ansible_mcp/logs/task_results
+2026-04-23 02:35:13 | INFO     | lib.database:__init__:47 | Database initialized: /home/workspace/tsc_ansible_mcp/logs/tsc_ansible_mcp.db
+2026-04-23 02:35:14 | INFO     | lib.task_result_store:__init__:53 | Task result storage directory: /home/workspace/tsc_ansible_mcp/logs/task_results
+2026-04-23 02:35:14 | INFO     | lib.database:__init__:47 | Database initialized: /home/workspace/tsc_ansible_mcp/logs/tsc_ansible_mcp.db
+2026-04-23 02:35:14 | INFO     | lib.database:export_to_yaml:416 | Exported 1 hosts to inventory.yml
+2026-04-23 02:35:14 | INFO     | lib.database:update_host_credentials:628 | Updated host credentials: 192.168.19.38
