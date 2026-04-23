@@ -1,0 +1,40 @@
+---
+# @meta:
+# {
+#   "description": "Change SSH port on target hosts using Python script with backup, config test, reload, and automatic rollback on failure.",
+#   "author": "tsc_ansible_mcp",
+#   "version": "1.0.0",
+#   "parameters": [
+#     {"name": "new_port", "type": "integer", "required": true, "description": "New SSH port number"},
+#     {"name": "old_port", "type": "integer", "required": false, "description": "Old SSH port number (default: 22)"}
+#   ],
+#   "use_cases": ["Change SSH port on multiple hosts safely with automatic rollback"],
+#   "notes": ["Requires root access on target hosts", "Systemd is required for sshd management"]
+# }
+
+- name: Change SSH port on target hosts
+  hosts: all
+  gather_facts: false
+  serial: 50
+  vars:
+    script_src: "{{ playbook_dir }}/../scripts/change_ssh_port_on_target.py"
+    script_dest: "/tmp/change_ssh_port_on_target.py"
+    python_path: "/home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3"
+  tasks:
+    - name: Upload Python script to target host
+      ansible.builtin.copy:
+        src: "{{ script_src }}"
+        dest: "{{ script_dest }}"
+        mode: "0755"
+
+    - name: Change SSH port using Python script
+      ansible.builtin.raw: |
+        {{ python_path }} {{ script_dest }} --new-port {{ new_port }} --old-port {{ old_port | default(22) }} --backup-suffix .bak_{{ ansible_date_time.epoch | default(9999999999) }}
+      register: change_result
+      changed_when: change_result.rc == 0
+      failed_when: change_result.rc != 0
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: "Host {{ inventory_hostname }}: {{ change_result.stdout | default('') }} {{ change_result.stderr | default('') }}"
+      when: change_result is defined

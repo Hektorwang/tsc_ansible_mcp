@@ -1,5 +1,90 @@
 # Release Notes
 
+## Version=1.13.0
+
+2026-04-24
+
+### Bug 修复
+
+#### 1. change_ssh_port MCP 超时问题修复
+
+修复了通过 MCP 调用 `change_ssh_port` 工具修改 SSH 端口时，客户端收到 `MCP error -32001: Request timed out` 错误。
+
+**问题原因：**
+- 旧实现中每个步骤（备份、修改配置、测试、重启、验证等）都独立调用 `execute_shell()`
+- 每次调用都会触发 `check_host_status` 进行环境检测和主机锁获取/释放
+- 对于 2 台主机、9 个步骤的场景，总共会执行约 18 次 `check_host_status` + 18 次 ansible shell playbook
+- 每次 playbook 执行都有启动开销，累积时间极易超过 MCP 客户端的默认超时时间（通常 30-60 秒）
+
+**修复内容：**
+- 将 `change_ssh_port` 的实现从 Python 多步骤串行调用改为三步方案
+- 第一步：执行 `check_host_status` 获取当前端口（每台主机 1 次）
+- 第二步：调用外联 playbook `change_ssh_port.yml` 执行完整的端口变更流程（每台主机 1 次）
+- 第三步：验证新端口连通性，支持 fallback 到旧端口
+- 每台主机只需 1 次 `check_host_status` + 1 次 playbook + 1 次验证，大幅减少 ansible 调用次数
+
+**新增文件：**
+- `playbooks/change_ssh_port.yml` - 外联 playbook，使用 `raw` 模块执行 Python 脚本
+- `scripts/change_ssh_port_on_target.py` - 目标主机上执行的 Python 脚本
+
+**改进内容：**
+- 新增主机数量限制：超过 50 台直接失败返回
+- 新增端口范围校验：目的端口必须为 22 或在 1024-65535 范围内
+- 全程持有主机锁，避免中间被其他任务抢占
+- 使用 rc 码区分失败状态：0=成功，1=配置测试失败，2=reload失败，3=新端口未监听，4=旧端口仍监听，99=其他错误
+- 支持新端口失败时 fallback 到旧端口验证连通性
+- 修复结果解析 Bug（`backup_result.get(host, {})` 应为 `backup_result.get("results", {}).get(host, {})`）
+
+**影响范围：**
+- `change_ssh_port` MCP 工具 - 重构为三步方案
+- `playbooks/change_ssh_port.yml` - 新增外联 playbook
+- `scripts/change_ssh_port_on_target.py` - 新增 Python 脚本
+
+### 改进
+
+#### 1. 代码质量
+
+- 所有 Python 脚本的中文注释和 docstrings 改为英文
+- 添加完整的 Google-style Docstrings 和 type hints
+
+### 技术实现
+
+#### 三步方案架构
+
+```
+change_ssh_port MCP 工具
+    |
+    +-- 前置校验（主机数 <= 50，端口范围检查）
+    |
+    +-- 第一步：check_host_status（获取当前端口）
+    |
+    +-- 第二步：execute_playbook("change_ssh_port.yml")
+    |       |
+    |       +-- ansible.builtin.copy（上传 Python 脚本）
+    |       +-- ansible.builtin.raw（执行 Python 脚本）
+    |               |
+    |               +-- 备份 sshd_config
+    |               +-- 修改 Port 行
+    |               +-- 测试配置（sshd -t）
+    |               +-- 重载 sshd（systemctl reload）
+    |               +-- 等待新端口监听（循环检测，超时 15 秒）
+    |               +-- 失败时自动回滚
+    |
+    +-- 第三步：验证和更新 inventory
+            |
+            +-- 更新 inventory（ansible_port = new_port）
+            +-- 验证新端口连通性（echo 测试）
+            +-- 失败时 fallback 到旧端口
+            +-- 根据结果最终调整 inventory
+```
+
+### 文档更新
+
+- 更新 `docs/SPEC.md` - 添加 change_ssh_port 三步方案说明
+- 更新 `README.md` - 添加 change_ssh_port 工具说明
+
+---
+
 ## Version=1.12.1
 
 2026-04-22

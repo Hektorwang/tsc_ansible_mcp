@@ -65,6 +65,14 @@ TSC Ansible MCP 是一个远程主机自动化管理平台，支持通过 MCP �
   - 支持 SSE 格式响应
   - 详细的日志记录（每个请求分配唯一 request_id）
   - 记录请求的完整生命周期和每个步骤的耗时
+### 6. SSH Port Management
+
+- **change_ssh_port** - Change SSH port on target hosts with automatic rollback on failure
+  - Validates host count (max 50) and port range (22 or 1024-65535)
+  - Three-step approach: check status, execute playbook, verify connectivity
+  - Supports fallback to old port if new port fails
+  - Automatic inventory updates with old port backup
+  - rc code based status: 0=success, 1=config test failed, 2=reload failed, 3=new port not listening, 4=old port still listening, 99=other error
 - **主机锁管理优化**（v1.11.0 新增）
   - 为所有执行方法添加完整的锁管理逻辑
   - 使用 try-finally 块确保锁在任何情况下都会被释放
@@ -259,6 +267,15 @@ ansible_playbook(
 )
 ```
 
+#### 9. 修改 SSH 端口
+
+```python
+change_ssh_port(
+    hosts=["192.168.1.1", "192.168.1.2"],
+    new_port=2222
+)
+```
+
 ### REST API 使用
 
 #### 认证
@@ -420,6 +437,7 @@ Playbook 文件应包含元数据，供 LLM 理解用途：
 | `delete_context`    | Delete specified context key-value pairs             |
 | `list_contexts`     | List all context key-value pairs                     |
 | `clear_contexts`    | Clear all context data                               |
+| `change_ssh_port`   | Change SSH port with automatic rollback on failure   |
 
 ### 动态 Playbook 工具
 

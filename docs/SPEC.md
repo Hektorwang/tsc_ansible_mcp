@@ -630,7 +630,64 @@ else:
     }
 ```
 
-## 16. 相关文档
+## 16. change_ssh_port 三步方案
+
+### 16.1 问题描述
+
+当用户通过 MCP 调用 `change_ssh_port` 工具修改 SSH 端口时，客户端收到 `MCP error -32001: Request timed out` 错误。
+根本原因是旧实现中每个步骤（备份、修改配置、测试、重启、验证等）都独立调用 `execute_shell()`，
+每次调用都会触发 `check_host_status` 进行环境检测和主机锁获取/释放，累积时间极易超过 MCP 客户端默认超时时间。
+
+### 16.2 解决方案
+
+将 `change_ssh_port` 的实现从 Python 多步骤串行调用改为三步方案：
+
+**第一步 - 前置校验和 check_host_status：**
+- 检测主机数量不超过 50 台
+- 检测目的端口为 22 或在 1024-65535 范围内
+- 对所有主机执行 `check_host_status`，获取当前端口和环境信息
+
+**第二步 - 调用外联 playbook：**
+- 调用 `change_ssh_port.yml` playbook，使用 `raw` 模块在目标主机上执行 Python 脚本
+- Python 脚本执行：备份 sshd_config、修改 Port 行、测试配置、重载 sshd、等待新端口监听
+- 任何验证失败时自动回滚配置
+- 使用 rc 码区分状态：0=成功，1=配置测试失败，2=reload失败，3=新端口未监听，4=旧端口仍监听，99=其他错误
+
+**第三步 - 验证和更新 inventory：**
+- 对成功主机先更新 inventory（新端口写入 ansible_port，原端口写入 ansible_old_port）
+- 使用 `raw` 模块 echo 通过新端口检测连通性
+- 若新端口失败，fallback 到旧端口再测试
+- 根据测试结果最终调整 inventory
+
+### 16.3 实现细节
+
+**Playbook 配置**：
+- 文件路径：`playbooks/change_ssh_port.yml`
+- 使用 `ansible.builtin.copy` 上传脚本到目标主机
+- 使用 `ansible.builtin.raw` 执行 Python 脚本
+- `serial: 50`，超时 600 秒
+- 无同名 `.md` 文件，避免被自动生成 playbook 工具注册
+
+**Python 脚本**：
+- 文件路径：`scripts/change_ssh_port_on_target.py`
+- 使用标准库，兼容 tsc_python（/home/tsc/tsc_tools/micromamba/envs/tsc_python/bin/python3）
+- 接收参数：`--new-port`、`--old-port`、`--backup-suffix`
+- 保留脚本不删除
+
+**锁管理**：
+- 全程持有主机锁，避免中间被其他任务抢占
+- 锁由 `executor.run_playbook` 和 `executor.ansible_shell` 内部自动处理
+
+**主机数量限制**：
+- 主机数量超过 50 台直接失败返回
+
+**端口范围校验**：
+- 目的端口必须为 22 或在 1024-65535 范围内
+
+**结果解析**：
+- 修复了旧版结果解析 Bug（`backup_result.get(host, {})` 应为 `backup_result.get("results", {}).get(host, {})`）
+
+## 17. 相关文档
 
 - [PRD 文档](./PRD.md)
 - [架构设计文档](./ARCHITECTURE.md)

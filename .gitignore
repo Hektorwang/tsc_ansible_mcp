@@ -15,6 +15,7 @@ __pycache__
 /tsc_install/*
 etc/jwt_issued_tokens.json
 etc/jwt_secret_key.txt
+/.pytest_cache
 etc/tokens.txt
 inventory.yml
 !.gitignore

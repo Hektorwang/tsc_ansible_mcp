@@ -478,13 +478,27 @@ class Executor:
 
             if event_type == "runner_on_ok":
                 res = event_data.get("res", {})
-                results[host] = {
-                    "rc": res.get("rc", 0),
-                    "stdout": res.get("stdout", ""),
-                    "stderr": res.get("stderr", ""),
-                }
-                logger.debug(
-                    f"Host {host} OK: rc={results[host]['rc']}, "
+                logger.info(f"[_parse_result] Host {host} runner_on_ok event: res type={type(res)}, res={res}")
+                if isinstance(res, dict):
+                    results[host] = {
+                        "rc": res.get("rc", 0),
+                        "stdout": res.get("stdout", ""),
+                        "stderr": res.get("stderr", ""),
+                    }
+                elif isinstance(res, str):
+                    results[host] = {
+                        "rc": 0,
+                        "stdout": res,
+                        "stderr": "",
+                    }
+                else:
+                    results[host] = {
+                        "rc": 0,
+                        "stdout": str(res),
+                        "stderr": "",
+                    }
+                logger.info(
+                    f"[_parse_result] Host {host} parsed: rc={results[host]['rc']}, "
                     f"stdout_len={len(results[host]['stdout'])}, "
                     f"stderr_len={len(results[host]['stderr'])}"
                 )
@@ -496,8 +510,8 @@ class Executor:
                 res = event_data.get("res", {})
                 error_msg = res.get("stderr") or res.get("msg") or str(event_data)
                 results[host] = {
-                    "rc": res.get("rc", result.rc),
-                    "stdout": res.get("stdout", ""),
+                    "rc": res.get("rc", result.rc) if isinstance(res, dict) else -1,
+                    "stdout": res.get("stdout", "") if isinstance(res, dict) else "",
                     "stderr": error_msg,
                     "error_type": (
                         "connection_error"
@@ -505,9 +519,9 @@ class Executor:
                         else "execution_error"
                     ),
                 }
-                logger.debug(
-                    f"Host {host} FAILED ({event_type}): rc={results[host]['rc']}, "
-                    f"stderr={results[host]['stderr'][:200]}"
+                logger.info(
+                    f"[_parse_result] Host {host} FAILED ({event_type}): rc={results[host]['rc']}, "
+                    f"stderr={results[host]['stderr'][:200] if results[host]['stderr'] else 'empty'}"
                 )
 
         return results
