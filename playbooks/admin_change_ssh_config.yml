@@ -13,8 +13,8 @@
       ansible.builtin.fail:
         msg: "At least one of new_port or root_password must be specified for host {{ inventory_hostname }}"
       when: >
-        (host_config.new_port is not defined or host_config.new_port | length == 0) and
-        (host_config.root_password is not defined or host_config.root_password | length == 0)
+        (host_config.new_port is not defined or host_config.new_port is none) and
+        (host_config.root_password is not defined or host_config.root_password is none)
 
     - name: Validate password strength
       ansible.builtin.shell:

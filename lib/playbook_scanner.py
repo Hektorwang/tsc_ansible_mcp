@@ -223,7 +223,7 @@ class PlaybookScanner:
                     "type": "object",
                     "description": f"{param['description']} ({'required' if param['required'] else 'optional'})",
                 }
-            elif param_type == "integer":
+            elif param_type in ("integer", "int"):
                 properties[param["name"]] = {
                     "type": "integer",
                     "description": f"{param['description']} ({'required' if param['required'] else 'optional'})",
