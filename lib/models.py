@@ -4,14 +4,14 @@ Data model module
 Defines data models for all requests and responses, as well as database models
 """
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
-from sqlalchemy import JSON, Column, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
-
 
 class Host(Base):
     """Host inventory model."""
@@ -21,13 +21,25 @@ class Host(Base):
     host = Column(String, primary_key=True, index=True)
     ansible_host = Column(String, nullable=False)
     ansible_port = Column(Integer, default=22)
+    ansible_old_port = Column(Integer, nullable=True)
     ansible_user = Column(String, default="root")
     ansible_password = Column(String, nullable=True)
     ansible_old_password = Column(String, nullable=True)
     ansible_private_key = Column(String, nullable=True)
     ansible_python_interpreter = Column(String, nullable=True)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
+    create_time = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False
+    )
+    update_time = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False
+    )
 
 
 class Task(Base):
@@ -40,8 +52,19 @@ class Task(Base):
     parameters = Column(JSON, nullable=False)
     status = Column(String, nullable=False)
     result = Column(JSON, nullable=True)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
+    create_time = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False
+    )
+    update_time = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False
+    )
 
 
 class Context(Base):
@@ -51,8 +74,19 @@ class Context(Base):
 
     key = Column(String, primary_key=True, index=True)
     value = Column(Text, nullable=False)
-    created_at = Column(DateTime, nullable=False)
-    updated_at = Column(DateTime, nullable=False)
+    create_time = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False
+    )
+    update_time = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False
+    )
 
 
 class CredentialsModel(BaseModel):

@@ -95,8 +95,6 @@ class TaskRepository:
                 parameters=json.dumps(parameters),
                 status="pending",
                 result=None,
-                created_at=now,
-                updated_at=now,
             )
             session.add(task)
         logger.info(f"Created task: {task_id}, type: {task_type}")
@@ -104,12 +102,11 @@ class TaskRepository:
     def update(
         self, task_id: str, status: str, result: Optional[Dict[str, Any]] = None
     ) -> None:
-        now = datetime.now()
         with self.db.get_session() as session:
             task = session.query(Task).filter(Task.id == task_id).first()
             if task:
                 task.status = status
-                task.updated_at = now
+                task.update_time = datetime.now()
                 if result is not None:
                     task.result = json.dumps(result)
         logger.info(f"Updated task: {task_id}, status: {status}")
@@ -130,15 +127,15 @@ class TaskRepository:
                 "result": (
                     json.loads(task.result) if task.result else None
                 ),
-                "created_at": task.created_at.isoformat(),
-                "updated_at": task.updated_at.isoformat(),
+                "create_time": task.create_time.isoformat(),
+                "update_time": task.update_time.isoformat(),
             }
 
     def list(
         self, status: Optional[str] = None, limit: int = 100
     ) -> List[Dict[str, Any]]:
         with self.db.get_session() as session:
-            query = session.query(Task).order_by(Task.created_at.desc())
+            query = session.query(Task).order_by(Task.create_time.desc())
             if status:
                 query = query.filter(Task.status == status)
             query = query.limit(limit)
@@ -147,19 +144,19 @@ class TaskRepository:
             for task in tasks:
                 result.append(
                     {
-                        "id": task.id,
-                        "type": task.type,
-                        "parameters": (
-                            json.loads(task.parameters)
-                            if task.parameters else {}
-                        ),
-                        "status": task.status,
-                        "result": (
-                            json.loads(task.result) if task.result else None
-                        ),
-                        "created_at": task.created_at.isoformat(),
-                        "updated_at": task.updated_at.isoformat(),
-                    }
+                            "id": task.id,
+                            "type": task.type,
+                            "parameters": (
+                                json.loads(task.parameters)
+                                if task.parameters else {}
+                            ),
+                            "status": task.status,
+                            "result": (
+                                json.loads(task.result) if task.result else None
+                            ),
+                            "create_time": task.create_time.isoformat(),
+                            "update_time": task.update_time.isoformat(),
+                        }
                 )
             msg = "Queried task list: status={}, count={}"
             logger.debug(msg, status, len(result))
@@ -180,7 +177,7 @@ class TaskRepository:
         cutoff_datetime = datetime.fromtimestamp(cutoff_time)
         with self.db.get_session() as session:
             count = session.query(Task).filter(
-                Task.created_at < cutoff_datetime,
+                Task.create_time < cutoff_datetime,
             ).delete()
         logger.info("Cleaned up expired tasks: deleted %d records", count)
         return count
@@ -222,18 +219,15 @@ class ContextRepository:
 
     def set(self, key: str, value: str) -> None:
         """Set context"""
-        now = datetime.now()
         with self.db.get_session() as session:
             context = session.query(Context).filter(Context.key == key).first()
             if context:
                 context.value = value
-                context.updated_at = now
+                context.update_time = datetime.now()
             else:
                 context = Context(
                     key=key,
                     value=value,
-                    created_at=now,
-                    updated_at=now,
                 )
                 session.add(context)
         logger.info(f"Set context: {key} = {value}")
@@ -347,8 +341,6 @@ class Inventory:
                         ansible_old_password=old_password,
                         ansible_private_key=private_key,
                         ansible_python_interpreter=python_interp,
-                        created_at=now,
-                        updated_at=now,
                     )
                     session.add(host)
 
@@ -504,8 +496,6 @@ class Inventory:
         """
         with self.db.get_session() as session:
             host_record = session.query(Host).filter(Host.host == host).first()
-            now = datetime.now()
-
             if not host_record:
                 host_record = Host(
                     host=host,
@@ -514,8 +504,6 @@ class Inventory:
                     ansible_user=user or "root",
                     ansible_password=password,
                     ansible_private_key=private_key,
-                    created_at=now,
-                    updated_at=now,
                 )
                 session.add(host_record)
             else:
@@ -527,7 +515,7 @@ class Inventory:
                     host_record.ansible_password = password
                 if private_key:
                     host_record.ansible_private_key = private_key
-                host_record.updated_at = now
+                host_record.update_time = datetime.now()
 
             self.export_to_yaml(session)
 
@@ -560,13 +548,13 @@ class Inventory:
                     ansible_host=host,
                     ansible_port=new_port,
                     ansible_user="root",
-                    created_at=datetime.now(),
-                    updated_at=datetime.now(),
                 )
                 session.add(host_record)
             else:
+                # Save old port to ansible_old_port
+                host_record.ansible_old_port = host_record.ansible_port
                 host_record.ansible_port = new_port
-                host_record.updated_at = datetime.now()
+                host_record.update_time = datetime.now()
 
             self.export_to_yaml(session)
 
@@ -621,7 +609,7 @@ class Inventory:
                 host_record.ansible_old_password = old_password
             if private_key:
                 host_record.ansible_private_key = private_key
-            host_record.updated_at = datetime.now()
+            host_record.update_time = datetime.now()
 
             self.export_to_yaml(session)
 
@@ -655,13 +643,11 @@ class Inventory:
                     ansible_host=host,
                     ansible_python_interpreter=python_path,
                     ansible_user="root",
-                    created_at=datetime.now(),
-                    updated_at=datetime.now(),
                 )
                 session.add(host_record)
             else:
                 host_record.ansible_python_interpreter = python_path
-                host_record.updated_at = datetime.now()
+                host_record.update_time = datetime.now()
 
             self.export_to_yaml(session)
 

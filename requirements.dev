@@ -9,8 +9,8 @@ loguru>=0.7.0
 pyyaml>=6.0
 watchdog>=3.0.0
 PyJWT>=2.8.0
-passlib
-asynssh
+passlib>=1.7.4
+asynssh>=2.22.0
 # 不要修改以下开发时辅助工具
 black
 mypy
