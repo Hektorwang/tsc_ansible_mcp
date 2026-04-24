@@ -40,7 +40,7 @@ def register_change_ssh_port(server):
 1. Validate input parameters (host count <= 50, port = 22 or 1024-65535)
 2. Step 1: Run check_host_status on all hosts to get current ports
 3. Step 2: Call external playbook change_ssh_port.yml (backup, modify config, test, reload, rollback on failure)
-4. Step 3: Update inventory for successful hosts, verify connectivity via new port with fallback to old port
+4. Step 3: Update inventory for successful hosts
 
 ## Return Value
 Returns execution results for each host, including success/failure status and details.
@@ -106,7 +106,6 @@ Returns execution results for each host, including success/failure status and de
                 }
                 continue
 
-            current_port = host_status.get("python_path", "")
             host_info = inventory_manager.get_host(host)
             old_port = 22
             if host_info:
@@ -154,15 +153,13 @@ Returns execution results for each host, including success/failure status and de
             results[host] = fail_data
 
         if not success_hosts:
-            logger.info(f"[{task_id}] Step 2: All hosts failed, skipping verification")
+            logger.info(f"[{task_id}] Step 2: All hosts failed")
             server.task_repo.update(task_id, "failed", results)
             return results
 
         logger.info(
-            f"[{task_id}] Step 3: Verify connectivity for {len(success_hosts)} successful hosts"
+            f"[{task_id}] Step 3: Update inventory for {len(success_hosts)} successful hosts"
         )
-
-        inventory_updates: Dict[str, Dict[str, Any]] = {}
 
         for host in success_hosts:
             old_port = host_old_ports.get(host, 22)
@@ -172,16 +169,13 @@ Returns execution results for each host, including success/failure status and de
                     "status": "failed",
                     "message": f"Failed to update inventory: {inventory_result.get('message')}",
                 }
-                success_hosts.remove(host)
                 continue
-            inventory_updates[host] = {"old_port": old_port, "new_port": new_port}
-
-        verify_results = _verify_connectivity(
-            server, task_id, success_hosts, new_port, host_old_ports, inventory_updates
-        )
-
-        for host, verify_result in verify_results.items():
-            results[host] = verify_result
+            results[host] = {
+                "status": "success",
+                "message": f"SSH port changed to {new_port} successfully",
+                "old_port": old_port,
+                "new_port": new_port,
+            }
 
         overall_status = "success"
         if any(r["status"] == "failed" for r in results.values()):
@@ -197,94 +191,3 @@ Returns execution results for each host, including success/failure status and de
             results,
         )
         return results
-
-
-def _verify_connectivity(
-    server,
-    task_id: str,
-    success_hosts: List[str],
-    new_port: int,
-    host_old_ports: Dict[str, int],
-    inventory_updates: Dict[str, Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
-    """Verify connectivity on new port with fallback to old port.
-
-    Args:
-        server: Server instance with execution_service and inventory_manager.
-        task_id: Task ID for logging.
-        success_hosts: List of hosts that succeeded in step 2.
-        new_port: New SSH port number.
-        host_old_ports: Dict mapping host to old port number.
-        inventory_updates: Dict mapping host to port update info.
-
-    Returns:
-        Dict mapping host to verification result.
-    """
-    results: Dict[str, Dict[str, Any]] = {}
-    hosts_fallback_needed: List[str] = []
-
-    logger.info(f"[{task_id}] Step 3a: Testing new port {new_port} connectivity")
-
-    for host in success_hosts:
-        echo_cmd = f"echo 'connectivity_test_new_port_{new_port}'"
-        verify_result = server.execution_service.execute_shell(
-            targets=[host],
-            command=echo_cmd,
-            timeout=30,
-            task_id=task_id,
-        )
-        logger.info(f"[{task_id}] Step 3a: New port verify for {host}: {verify_result}")
-
-        host_verify_results = verify_result.get("results", {})
-        host_result = host_verify_results.get(host, {})
-        rc = host_result.get("rc", -1)
-
-        if rc == 0:
-            results[host] = {
-                "status": "success",
-                "message": f"SSH port changed to {new_port} successfully, connectivity verified",
-            }
-        else:
-            hosts_fallback_needed.append(host)
-
-    if hosts_fallback_needed:
-        logger.info(
-            f"[{task_id}] Step 3b: Fallback to old port for {len(hosts_fallback_needed)} hosts"
-        )
-
-        for host in hosts_fallback_needed:
-            old_port = host_old_ports.get(host, 22)
-            echo_cmd = f"echo 'connectivity_test_old_port_{old_port}'"
-            fallback_result = server.execution_service.execute_shell(
-                targets=[host],
-                command=echo_cmd,
-                timeout=30,
-                task_id=task_id,
-            )
-            logger.info(
-                f"[{task_id}] Step 3b: Fallback verify for {host}: {fallback_result}"
-            )
-
-            host_fallback_results = fallback_result.get("results", {})
-            host_fallback_result = host_fallback_results.get(host, {})
-            fallback_rc = host_fallback_result.get("rc", -1)
-
-            if fallback_rc == 0:
-                results[host] = {
-                    "status": "success",
-                    "message": f"New port {new_port} failed, fallback to old port {old_port} successful. Inventory reverted.",
-                }
-                inventory_manager = server.inventory_manager
-                inventory_result = inventory_manager.update_host_port(host, old_port)
-                if inventory_result.get("status") != "success":
-                    results[host] = {
-                        "status": "failed",
-                        "message": f"Fallback successful but inventory update failed: {inventory_result.get('message')}",
-                    }
-            else:
-                results[host] = {
-                    "status": "failed",
-                    "message": f"Both new port {new_port} and old port {old_port} connectivity failed",
-                }
-
-    return results

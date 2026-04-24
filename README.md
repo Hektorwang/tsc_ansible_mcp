@@ -72,6 +72,15 @@ TSC Ansible MCP 是一个远程主机自动化管理平台，支持通过 MCP �
   - Supports fallback to old port if new port fails
   - Automatic inventory updates with old port backup
   - rc code based status: 0=success, 1=config test failed, 2=reload failed, 3=new port not listening, 4=old port still listening, 99=other error
+### 8. SSH Password Management
+
+- **change_ssh_password** - Change SSH password on target hosts
+  - Validates host count (max 50) and password complexity (8+ chars, digit, letter, special char)
+  - Two-step approach: check status, execute playbook (change password)
+  - Playbook uses multi-level fallback: Ansible user module -> chpasswd -> passwd --stdin
+  - Automatic inventory updates for successful hosts
+  - Local verification within playbook execution
+
 - **主机锁管理优化**（v1.11.0 新增）
   - 为所有执行方法添加完整的锁管理逻辑
   - 使用 try-finally 块确保锁在任何情况下都会被释放
@@ -418,6 +427,7 @@ Playbook 文件应包含元数据，供 LLM 理解用途：
 | `list_contexts`     | List all context key-value pairs                     |
 | `clear_contexts`    | Clear all context data                               |
 | `change_ssh_port`   | Change SSH port with automatic rollback on failure   |
+| `change_ssh_password` | Change SSH password with automatic inventory updates |
 
 ### 动态 Playbook 工具
 
@@ -443,3 +453,10 @@ playbook_collect_iaas_info(
 - `admin` 角色可以调用所有工具
 - `user` 角色只能调用 `playbook_*` 工具和 playbook 相关工具
 - 可在配置文件中自定义角色权限
+
+## Changelog
+
+| Version | Date       | Changes                                                                 |
+|---------|------------|-------------------------------------------------------------------------|
+| v1.14.0 | 2026-04-25 | 新增 change_ssh_password 工具，优化验证逻辑为本地验证                   |
+| v1.13.0 |            | 主机锁管理优化、localhost 连接修复、SSH 配置优化                        |

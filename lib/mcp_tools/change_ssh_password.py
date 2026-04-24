@@ -60,8 +60,8 @@ def register_change_ssh_password(server):
 ## Workflow
 1. Validate input parameters (host count <= 50, password complexity)
 2. Step 1: Run check_host_status on all hosts to get current environment
-3. Step 2: Call external playbook change_ssh_password.yml (change password, verify)
-4. Step 3: Update inventory for successful hosts, verify connectivity with fallback to old password
+3. Step 2: Call external playbook change_ssh_password.yml (change password, local verification)
+4. Step 3: Update inventory for successful hosts (playbook includes local verification)
 
 ## Return Value
 Returns execution results for each host, including success/failure status and details.
@@ -116,7 +116,6 @@ Returns execution results for each host, including success/failure status and de
         logger.info(f"[{task_id}] Step 1: Host status check result: {detect_result}")
 
         hosts_to_process: List[str] = []
-        host_old_passwords: Dict[str, str] = {}
 
         for host in hosts:
             host_status = detect_result.get("results", {}).get(host, {})
@@ -127,11 +126,6 @@ Returns execution results for each host, including success/failure status and de
                 }
                 continue
 
-            host_info = inventory_manager.get_host(host)
-            old_password = ""
-            if host_info:
-                old_password = host_info.get("ansible_password", "")
-            host_old_passwords[host] = old_password
             hosts_to_process.append(host)
 
         if not hosts_to_process:
@@ -153,57 +147,31 @@ Returns execution results for each host, including success/failure status and de
         )
         logger.info(f"[{task_id}] Step 2: Playbook result: {playbook_result}")
 
-        success_hosts: List[str] = []
-        failed_hosts_data: Dict[str, Dict[str, Any]] = {}
-
         playbook_results = playbook_result.get("results", {})
         for host in hosts_to_process:
             host_result = playbook_results.get(host, {})
             rc = host_result.get("rc", -1)
             if rc == 0:
-                success_hosts.append(host)
+                inventory_result = inventory_manager.update_host_credentials(
+                    host=host,
+                    password=new_password,
+                )
+                if inventory_result.get("status") == "success":
+                    results[host] = {
+                        "status": "success",
+                        "message": "SSH password changed and verified locally",
+                    }
+                else:
+                    results[host] = {
+                        "status": "failed",
+                        "message": f"Password changed but failed to update inventory: {inventory_result.get('message')}",
+                    }
             else:
-                failed_hosts_data[host] = {
+                results[host] = {
                     "status": "failed",
                     "message": host_result.get("stderr", "Playbook execution failed"),
                     "rc": rc,
                 }
-
-        for host, fail_data in failed_hosts_data.items():
-            results[host] = fail_data
-
-        if not success_hosts:
-            logger.info(f"[{task_id}] Step 2: All hosts failed, skipping verification")
-            server.task_repo.update(task_id, "failed", results)
-            return results
-
-        logger.info(
-            f"[{task_id}] Step 3: Verify connectivity for {len(success_hosts)} successful hosts"
-        )
-
-        inventory_updates: Dict[str, Dict[str, Any]] = {}
-
-        for host in success_hosts:
-            old_password = host_old_passwords.get(host, "")
-            inventory_result = inventory_manager.update_host_credentials(
-                host=host,
-                password=new_password,
-            )
-            if inventory_result.get("status") != "success":
-                results[host] = {
-                    "status": "failed",
-                    "message": f"Failed to update inventory: {inventory_result.get('message')}",
-                }
-                success_hosts.remove(host)
-                continue
-            inventory_updates[host] = {"old_password": old_password, "new_password": new_password}
-
-        verify_results = _verify_connectivity(
-            server, task_id, success_hosts, new_password, host_old_passwords, inventory_updates
-        )
-
-        for host, verify_result in verify_results.items():
-            results[host] = verify_result
 
         overall_status = "success"
         if any(r["status"] == "failed" for r in results.values()):
@@ -219,98 +187,3 @@ Returns execution results for each host, including success/failure status and de
             results,
         )
         return results
-
-
-def _verify_connectivity(
-    server,
-    task_id: str,
-    success_hosts: List[str],
-    new_password: str,
-    host_old_passwords: Dict[str, str],
-    inventory_updates: Dict[str, Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
-    """Verify connectivity on new password with fallback to old password.
-
-    Args:
-        server: Server instance with execution_service and inventory_manager.
-        task_id: Task ID for logging.
-        success_hosts: List of hosts that succeeded in step 2.
-        new_password: New SSH password.
-        host_old_passwords: Dict mapping host to old password.
-        inventory_updates: Dict mapping host to password update info.
-
-    Returns:
-        Dict mapping host to verification result.
-    """
-    results: Dict[str, Dict[str, Any]] = {}
-    hosts_fallback_needed: List[str] = []
-
-    logger.info(f"[{task_id}] Step 3a: Testing new password connectivity")
-
-    echo_cmd = f"echo 'connectivity_test_new_password'"
-    verify_result = server.execution_service.execute_shell(
-        targets=success_hosts,
-        command=echo_cmd,
-        timeout=30,
-        task_id=task_id,
-    )
-    logger.info(f"[{task_id}] Step 3a: New password verify for all hosts: {verify_result}")
-
-    host_verify_results = verify_result.get("results", {})
-    for host in success_hosts:
-        host_result = host_verify_results.get(host, {})
-        rc = host_result.get("rc", -1)
-
-        if rc == 0:
-            results[host] = {
-                "status": "success",
-                "message": "SSH password changed successfully, connectivity verified",
-            }
-        else:
-            hosts_fallback_needed.append(host)
-
-    if hosts_fallback_needed:
-        logger.info(
-            f"[{task_id}] Step 3b: Fallback to old password for {len(hosts_fallback_needed)} hosts"
-        )
-
-        inventory_manager = server.inventory_manager
-
-        echo_cmd = f"echo 'connectivity_test_old_password'"
-        fallback_result = server.execution_service.execute_shell(
-            targets=hosts_fallback_needed,
-            command=echo_cmd,
-            timeout=30,
-            task_id=task_id,
-        )
-        logger.info(
-            f"[{task_id}] Step 3b: Fallback verify for all hosts: {fallback_result}"
-        )
-
-        host_fallback_results = fallback_result.get("results", {})
-        for host in hosts_fallback_needed:
-            old_password = host_old_passwords.get(host, "")
-            host_fallback_result = host_fallback_results.get(host, {})
-            fallback_rc = host_fallback_result.get("rc", -1)
-
-            if fallback_rc == 0:
-                results[host] = {
-                    "status": "success",
-                    "message": f"New password failed, fallback to old password successful. Inventory reverted.",
-                }
-                inventory_result = inventory_manager.update_host_credentials(
-                    host=host,
-                    password=old_password,
-                )
-                if inventory_result.get("status") != "success":
-                    results[host] = {
-                        "status": "failed",
-                        "message": f"Fallback successful but inventory update failed: {inventory_result.get('message')}",
-                    }
-            else:
-                results[host] = {
-                    "status": "failed",
-                    "message": "Both new password and old password connectivity failed",
-                }
-
-    return results
