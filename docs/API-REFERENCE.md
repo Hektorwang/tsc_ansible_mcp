@@ -762,8 +762,6 @@ MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 RE
 | `ansible_shell`      | 执行远程 Shell 命令                            | 2.5           |
 | `ansible_copy`       | 调用 ansible copy 模块，分发文件到远程主机     | 2.6           |
 | `ansible_fetch`      | 调用 ansible fetch 模块，从远程主机获取文件    | 2.7           |
-| `list_playbooks`     | 列出可用的 playbook 文件，包含元数据说明       | 2.8           |
-| `ansible_playbook`   | 执行 playbook 文件                             | 2.9           |
 | `get_task_detail`    | 查询特定主机在指定任务中的执行详情             | 2.13          |
 | `get_failed_hosts`   | 查询指定任务中所有失败主机的详情               | -             |
 | `get_all_results`    | 分页查询指定任务的所有主机执行结果             | -             |
@@ -892,7 +890,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 | 角色  | 权限范围                                          |
 | ----- | ------------------------------------------------- |
 | admin | 可调用所有工具                                    |
-| user  | 仅能调用 playbook 相关工具（list_playbooks, ansible_playbook, get_task_status, 以及所有动态生成的playbook工具） |
+| user  | 仅能调用 playbook 相关工具（get_task_status, 以及所有动态生成的playbook工具） |
 
 **权限验证机制**:
 - LLM 获取工具列表时，根据角色暴露可用工具
@@ -971,7 +969,7 @@ jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
 
 [auth.tool_permissions]
 admin = ["*"]
-user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
+user = ["get_task_status", "playbook_*"]
 ```
 
 **密钥文件**：

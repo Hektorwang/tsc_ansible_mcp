@@ -9,7 +9,7 @@ jwt_secret_key_file = "etc/jwt_secret_key.txt"
 
 [auth.tool_permissions]
 admin = ["*"]
-user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
+user = ["get_task_status", "playbook_*"]
 
 [debug]
 enabled = true

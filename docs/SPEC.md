@@ -422,7 +422,7 @@ jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
 
 [auth.tool_permissions]
 admin = ["*"]
-user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
+user = ["get_task_status", "playbook_*"]
 ```
 
 **权限配置说明**:

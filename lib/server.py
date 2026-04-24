@@ -80,11 +80,8 @@ playbook_bootstrap_tsc_environment(targets=["192.168.1.1"], user="root", passwor
 # 3. Execute command
 ansible_shell(targets=["192.168.1.1"], command="ls -la", user="root", password="xxx")
 
-# 4. List playbooks
-list_playbooks()
-
-# 5. Execute playbook
-ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="root", password="xxx")
+# 4. Execute playbook
+playbook_system_check(targets=["192.168.1.1"], user="root", password="xxx")
 ```
 """
 

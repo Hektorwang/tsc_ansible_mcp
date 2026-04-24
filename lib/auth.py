@@ -43,8 +43,6 @@ class AuthMiddleware:
             tool_permissions = {
                 "admin": ["*"],
                 "user": [
-                    "list_playbooks",
-                    "ansible_playbook",
                     "get_task_status",
                     "playbook_*",
                 ],

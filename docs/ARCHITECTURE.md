@@ -273,37 +273,7 @@ bash /tmp/tsc_tools.sh
 2. 返回任务状态和结果
 ```
 
-### 4.9 list_playbooks
-
-**功能**: 查询 playbooks 目录下的剧本, 并提取其元数据
-
-**实现方式**: Python 读取 yaml 文件
-
-**执行流程**:
-
-```text
-1. 遍历 `playbooks` 目录下第一级所有的 yml 文件
-2. 读取每个 yml 文件的元数据信息 (yaml.safe_load())
-3. 返回 剧本文件路径和剧本元数据信息
-```
-
-### 4.10 ansible_playbook
-
-**功能**: 执行 playbooks 目录下剧本文件
-
-**实现方式**: ansible-runner
-
-**执行流程**:
-
-```text
-1. 接受接口传来的 playbook 剧本名, 和剧本的变量参数, 以及要运行的主机
-2. 生成临时 inventory 文件
-3. 将主机也更新到 etc/inventory.yml
-4. 使用临时 inventory 文件来运行具备
-5. 返回各主机运行结果
-```
-
-### 4.11 动态 Playbook 工具生成
+### 4.9 动态 Playbook 工具生成
 
 **功能**: 服务启动时自动扫描 playbooks 目录，为每个 playbook 动态生成独立的 MCP 工具
 
@@ -335,7 +305,7 @@ bash /tmp/tsc_tools.sh
 - 建议包含 `parameters`、`use_cases`、`example`、`notes` 字段
 - 缺少元数据的 playbook 将被跳过并在日志中告警
 
-### 4.12 JWT 认证架构
+### 4.10 JWT 认证架构
 
 **功能**: 实现 JWT 身份认证和角色权限控制
 
@@ -445,7 +415,7 @@ JWT 认证中间件（提取角色信息）
 | 角色  | 权限配置        | 说明             |
 | ----- | --------------- | ---------------- |
 | admin | ["*"]           | 可调用所有工具   |
-| user  | ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"] | 仅 playbook 相关 |
+| user  | ["get_task_status", "playbook_*"] | 仅 playbook 相关 |
 
 **权限配置说明**:
 - `*`: 表示所有工具

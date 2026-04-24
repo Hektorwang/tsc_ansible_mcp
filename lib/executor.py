@@ -544,7 +544,6 @@ class Executor:
                 logger.warning(
                     f"The following hosts are executing tasks, request rejected: {busy_hosts}"
                 )
-                self._release_hosts(targets)
                 return {
                     "task_id": task_id or str(uuid.uuid4()),
                     "status": "failed",
@@ -564,28 +563,28 @@ class Executor:
             self._current_task_hosts = targets
 
         try:
-            inventory = self._build_inventory(targets)
-        except ValueError as e:
-            return {
-                "task_id": task_id or str(uuid.uuid4()),
-                "status": "failed",
-                "summary": {
-                    "total": len(targets),
-                    "success": 0,
-                    "error": len(targets),
-                },
-                "results": {
-                    host: {
-                        "error": str(e),
-                        "error_type": "host_not_in_inventory",
-                    }
-                    for host in targets
-                },
-            }
+            try:
+                inventory = self._build_inventory(targets)
+            except ValueError as e:
+                return {
+                    "task_id": task_id or str(uuid.uuid4()),
+                    "status": "failed",
+                    "summary": {
+                        "total": len(targets),
+                        "success": 0,
+                        "error": len(targets),
+                    },
+                    "results": {
+                        host: {
+                            "error": str(e),
+                            "error_type": "host_not_in_inventory",
+                        }
+                        for host in targets
+                    },
+                }
 
-        logger.debug(f"Final inventory used: {inventory}")
+            logger.debug(f"Final inventory used: {inventory}")
 
-        try:
             playbook = [
                 {
                     "name": "Check host status",
@@ -936,7 +935,30 @@ class Executor:
                     },
                     "results": results,
                 }
-            inventory = self._build_inventory(targets)
+
+            try:
+                inventory = self._build_inventory(targets)
+            except ValueError as e:
+                return {
+                    "task_id": task_id or str(uuid.uuid4()),
+                    "status": "failed",
+                    "summary": {
+                        "total": len(targets),
+                        "success": 0,
+                        "failed": len(targets),
+                    },
+                    "results": {
+                        host: {
+                            "rc": -1,
+                            "stdout": "",
+                            "stderr": str(e),
+                            "elapsed": "0s",
+                            "error_type": "host_not_in_inventory",
+                        }
+                        for host in targets
+                    },
+                }
+
             playbook = [
                 {
                     "name": "Dispatch file",
@@ -1142,7 +1164,29 @@ class Executor:
                     "results": results,
                 }
 
-            inventory = self._build_inventory(targets)
+            try:
+                inventory = self._build_inventory(targets)
+            except ValueError as e:
+                return {
+                    "task_id": task_id or str(uuid.uuid4()),
+                    "status": "failed",
+                    "summary": {
+                        "total": len(targets),
+                        "success": 0,
+                        "failed": len(targets),
+                    },
+                    "results": {
+                        host: {
+                            "rc": -1,
+                            "stdout": "",
+                            "stderr": f"主机不可用: {e}",
+                            "elapsed": "0s",
+                            "error_type": "host_not_in_inventory",
+                        }
+                        for host in targets
+                    },
+                }
+
             playbook = [
                 {
                     "name": "Execute command",
@@ -1469,10 +1513,32 @@ class Executor:
                     },
                     "results": results,
                 }
+
+            try:
+                inventory = self._build_inventory(targets)
+            except ValueError as e:
+                return {
+                    "task_id": task_id or str(uuid.uuid4()),
+                    "status": "failed",
+                    "summary": {
+                        "total": len(targets),
+                        "success": 0,
+                        "failed": len(targets),
+                    },
+                    "results": {
+                        host: {
+                            "rc": -1,
+                            "stdout": "",
+                            "stderr": f"主机不可用: {e}",
+                            "elapsed": "0s",
+                            "error_type": "host_not_in_inventory",
+                        }
+                        for host in targets
+                    },
+                }
+
             final_task_id = task_id or str(uuid.uuid4())
             self._current_task_task_id = final_task_id
-
-            inventory = self._build_inventory(targets)
 
             start_time = time.time()
             result, run_events = self._run_ansible(
@@ -1617,7 +1683,30 @@ class Executor:
                     },
                     "results": results,
                 }
-            inventory = self._build_inventory(targets)
+            try:
+                inventory = self._build_inventory(targets)
+            except ValueError as e:
+                return {
+                    "task_id": task_id or str(uuid.uuid4()),
+                    "status": "failed",
+                    "summary": {
+                        "total": len(targets),
+                        "success": 0,
+                        "failed": len(targets),
+                    },
+                    "results": {
+                        host: {
+                            "rc": -1,
+                            "dest": "",
+                            "checksum": "",
+                            "changed": False,
+                            "stderr": f"主机不可用: {e}",
+                            "elapsed": "0s",
+                            "error_type": "host_not_in_inventory",
+                        }
+                        for host in targets
+                    },
+                }
             playbook = [
                 {
                     "name": "Fetch file",

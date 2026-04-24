@@ -37,7 +37,6 @@ TSC Ansible MCP 是一个远程主机自动化管理平台，支持通过 MCP �
 
 ### 5. Playbook 执行
 
-- 列出可用的 playbook 文件（含元数据说明）
 - 执行指定的 playbook 文件
 - 支持传入额外变量
 - **动态工具生成**: 每个 playbook 自动生成独立的 MCP 工具，LLM 可直接调用
@@ -167,7 +166,7 @@ jwt_issued_tokens_file = "etc/jwt_issued_tokens.json"
 
 [auth.tool_permissions]
 admin = ["*"]
-user = ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"]
+user = ["get_task_status", "playbook_*"]
 ```
 
 ### 启动服务
@@ -245,23 +244,6 @@ ansible_fetch(
     targets=["192.168.1.1"],
     src="/remote/path/file.log",
     dest="/local/path/",
-    user="root",
-    password="your_password"
-)
-```
-
-#### 7. 列出 Playbook
-
-```python
-list_playbooks()
-```
-
-#### 8. 执行 Playbook
-
-```python
-ansible_playbook(
-    playbook="system_check.yml",
-    targets=["192.168.1.1"],
     user="root",
     password="your_password"
 )
@@ -429,8 +411,6 @@ Playbook 文件应包含元数据，供 LLM 理解用途：
 | `ansible_shell`     | Execute remote Shell commands                        |
 | `ansible_copy`      | Distribute files to remote hosts                     |
 | `ansible_fetch`     | Retrieve files from remote hosts                     |
-| `list_playbooks`    | List available playbook files                        |
-| `ansible_playbook`  | Execute playbook files                               |
 | `get_task_status`   | Query task status                                    |
 | `set_context`       | Set context key-value pairs                          |
 | `get_context`       | Get context value                                    |

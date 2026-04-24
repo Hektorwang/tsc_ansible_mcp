@@ -136,17 +136,6 @@ class TaskResultStore:
 
         return results
 
-    def get_failed_results(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """Get all failed host results for a task.
-
-        Args:
-            task_id: Task ID.
-
-        Returns:
-            Failed host results, None if task not found.
-        """
-        return self.get_result(task_id, status="failed")
-
     def delete_result(self, task_id: str) -> bool:
         """Delete result file.
 
