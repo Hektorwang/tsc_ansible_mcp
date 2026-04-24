@@ -12,7 +12,6 @@ import subprocess
 import sys
 import time
 
-
 SSHD_CONFIG = "/etc/ssh/sshd_config"
 
 
@@ -113,7 +112,9 @@ def reload_sshd():
     Returns:
         Tuple of (success, error_message).
     """
-    result = subprocess.run("systemctl reload sshd", shell=True, capture_output=True, text=True)
+    result = subprocess.run(
+        "systemctl reload sshd", shell=True, capture_output=True, text=True
+    )
     return result.returncode == 0, result.stderr.strip()
 
 
@@ -123,7 +124,9 @@ def restart_sshd():
     Returns:
         Tuple of (success, error_message).
     """
-    result = subprocess.run("systemctl restart sshd", shell=True, capture_output=True, text=True)
+    result = subprocess.run(
+        "systemctl restart sshd", shell=True, capture_output=True, text=True
+    )
     return result.returncode == 0, result.stderr.strip()
 
 
@@ -137,8 +140,7 @@ def is_port_listening(port):
         True if port is listening, False otherwise.
     """
     result = subprocess.run(
-        f"ss -tlnp | grep -q ':{port} '",
-        shell=True, capture_output=True, text=True
+        f"ss -tlnp | grep -q ':{port} '", shell=True, capture_output=True, text=True
     )
     return result.returncode == 0
 
@@ -167,7 +169,9 @@ def main():
     parser = argparse.ArgumentParser(description="Change SSH port on target host")
     parser.add_argument("--new-port", type=int, required=True, help="New SSH port")
     parser.add_argument("--old-port", type=int, default=22, help="Old SSH port")
-    parser.add_argument("--backup-suffix", type=str, default=".bak", help="Backup file suffix")
+    parser.add_argument(
+        "--backup-suffix", type=str, default=".bak", help="Backup file suffix"
+    )
     args = parser.parse_args()
 
     new_port = args.new_port

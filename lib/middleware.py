@@ -253,7 +253,9 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
 
                 except json.JSONDecodeError as e:
                     logger.error(f"[{request_id}] JSON parsing failed: {e}")
-                    logger.debug(f"[{request_id}] Raw request body that failed to parse: {body}")
+                    logger.debug(
+                        f"[{request_id}] Raw request body that failed to parse: {body}"
+                    )
 
             # Continue processing request
             response = await call_next(request)
@@ -306,8 +308,12 @@ class MCPAuthorizationMiddleware(BaseHTTPMiddleware):
                 status_code=500,
             )
 
-        logger.info(f"[{request_id}] Response body total size: {len(response_body)} bytes")
-        logger.debug(f"[{request_id}] Response body first 500 bytes: {response_body[:500]}")
+        logger.info(
+            f"[{request_id}] Response body total size: {len(response_body)} bytes"
+        )
+        logger.debug(
+            f"[{request_id}] Response body first 500 bytes: {response_body[:500]}"
+        )
 
         if not response_body:
             logger.error(f"[{request_id}] Response body is empty")

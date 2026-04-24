@@ -136,7 +136,7 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
             playbook_params = []  # 不包含 'targets', 'extravars', 'timeout'
 
             for param_name, param_info in param_props.items():
-                if param_name not in ('targets', 'extravars', 'timeout'):
+                if param_name not in ("targets", "extravars", "timeout"):
                     playbook_params.append((param_name, param_info))
 
             # 动态构造函数签名
@@ -144,110 +144,118 @@ ansible_playbook(playbook="system_check.yml", targets=["192.168.1.1"], user="roo
 
             # 构造函数签名字符串
             sig_parts = [
-                'self',  # 不，等等，我们需要创建一个闭包！
-                'targets: List[str]',
-                'extravars: Optional[Union[Dict[str, Any], str]] = None',
-                'timeout: Optional[int] = None',
+                "self",  # 不，等等，我们需要创建一个闭包！
+                "targets: List[str]",
+                "extravars: Optional[Union[Dict[str, Any], str]] = None",
+                "timeout: Optional[int] = None",
             ]
 
             # 添加 playbook 特定参数
             param_defaults = {}
             for param_name, param_info in playbook_params:
-                param_type = param_info.get('type')
-                if param_type == 'string':
-                    sig_part = f'{param_name}: Optional[str] = None'
-                elif param_type == 'integer':
-                    sig_part = f'{param_name}: Optional[int] = None'
-                elif param_type == 'object':
-                    sig_part = f'{param_name}: Optional[Dict[str, Any]] = None'
-                elif param_type == 'array':
-                    sig_part = f'{param_name}: Optional[List[Dict[str, Any]]] = None'
+                param_type = param_info.get("type")
+                if param_type == "string":
+                    sig_part = f"{param_name}: Optional[str] = None"
+                elif param_type == "integer":
+                    sig_part = f"{param_name}: Optional[int] = None"
+                elif param_type == "object":
+                    sig_part = f"{param_name}: Optional[Dict[str, Any]] = None"
+                elif param_type == "array":
+                    sig_part = f"{param_name}: Optional[List[Dict[str, Any]]] = None"
                 else:
-                    sig_part = f'{param_name}: Optional[Any] = None'
+                    sig_part = f"{param_name}: Optional[Any] = None"
                 sig_parts.append(sig_part)
                 param_defaults[param_name] = None  # 默认值都是 None
 
             # 构造函数体
             func_body_lines = [
-                'logger.info(',
+                "logger.info(",
                 '    "MCP tool call: playbook_%s, targets=%s, extravars=%s",',
-                '    playbook_name,',
-                '    targets,',
-                '    extravars,',
-                ')',
-                'parsed_extravars: Optional[Dict[str, Any]] = None',
-                '',
-                'if extravars is not None:',
-                '    if isinstance(extravars, str):',
-                '        try:',
-                '            parsed_extravars = json.loads(extravars)',
-                '        except json.JSONDecodeError:',
-                '            parsed_extravars = None',
-                '    else:',
-                '        parsed_extravars = extravars',
-                '',
-                'playbook_vars = {}',
+                "    playbook_name,",
+                "    targets,",
+                "    extravars,",
+                ")",
+                "parsed_extravars: Optional[Dict[str, Any]] = None",
+                "",
+                "if extravars is not None:",
+                "    if isinstance(extravars, str):",
+                "        try:",
+                "            parsed_extravars = json.loads(extravars)",
+                "        except json.JSONDecodeError:",
+                "            parsed_extravars = None",
+                "    else:",
+                "        parsed_extravars = extravars",
+                "",
+                "playbook_vars = {}",
             ]
 
             # 收集 playbook 特定参数
             for param_name, _ in playbook_params:
-                func_body_lines.extend([
-                    f'if {param_name} is not None:',
-                    f'    playbook_vars["{param_name}"] = {param_name}',
-                ])
+                func_body_lines.extend(
+                    [
+                        f"if {param_name} is not None:",
+                        f'    playbook_vars["{param_name}"] = {param_name}',
+                    ]
+                )
 
-            func_body_lines.extend([
-                '',
-                'if parsed_extravars and playbook_vars:',
-                '    merged = {**parsed_extravars, **playbook_vars}',
-                '    parsed_extravars = merged',
-                'elif playbook_vars:',
-                '    parsed_extravars = playbook_vars',
-                '',
-                'task_id = str(uuid.uuid4())',
-                'params = {"targets": targets}',
-                'self.task_repo.create(task_id, playbook_name, params)',
-                'result = self.execution_service.execute_playbook(',
-                '    playbook_name,',
-                '    targets,',
-                '    parsed_extravars,',
-                '    timeout,',
-                '    task_id,',
-                ')',
-                'logger.info(',
-                '    "MCP tool response: playbook_%s, task_id=%s, result=%s",',
-                '    playbook_name,',
-                '    task_id,',
-                '    result,',
-                ')',
-                'return result',
-            ])
+            func_body_lines.extend(
+                [
+                    "",
+                    "if parsed_extravars and playbook_vars:",
+                    "    merged = {**parsed_extravars, **playbook_vars}",
+                    "    parsed_extravars = merged",
+                    "elif playbook_vars:",
+                    "    parsed_extravars = playbook_vars",
+                    "",
+                    "task_id = str(uuid.uuid4())",
+                    'params = {"targets": targets}',
+                    "self.task_repo.create(task_id, playbook_name, params)",
+                    "result = self.execution_service.execute_playbook(",
+                    "    playbook_name,",
+                    "    targets,",
+                    "    parsed_extravars,",
+                    "    timeout,",
+                    "    task_id,",
+                    ")",
+                    "logger.info(",
+                    '    "MCP tool response: playbook_%s, task_id=%s, result=%s",',
+                    "    playbook_name,",
+                    "    task_id,",
+                    "    result,",
+                    ")",
+                    "return result",
+                ]
+            )
 
             # 使用 exec() 动态创建函数
             # 创建一个 locals 字典来存储函数
             func_locals = {
-                'json': json,
-                'uuid': uuid,
-                'logger': logger,
-                'self': self,
-                'playbook_name': playbook_name,
-                'List': List,
-                'Optional': Optional,
-                'Union': Union,
-                'Dict': Dict,
-                'Any': Any,
+                "json": json,
+                "uuid": uuid,
+                "logger": logger,
+                "self": self,
+                "playbook_name": playbook_name,
+                "List": List,
+                "Optional": Optional,
+                "Union": Union,
+                "Dict": Dict,
+                "Any": Any,
             }
 
             # 构建完整的函数源码
-            full_func_src = f'''def {tool_name}({', '.join(sig_parts[1:])}) -> Dict[str, Any]:
-    ''' + '\n    '.join(func_body_lines)
+            full_func_src = f"""def {tool_name}({', '.join(sig_parts[1:])}) -> Dict[str, Any]:
+    """ + "\n    ".join(
+                func_body_lines
+            )
 
             # 执行源码来创建函数
             exec(full_func_src, func_locals)
             playbook_tool = func_locals[tool_name]
 
             # 装饰工具并注册
-            playbook_tool = require_permission(f"playbook_{playbook_name}")(playbook_tool)
+            playbook_tool = require_permission(f"playbook_{playbook_name}")(
+                playbook_tool
+            )
             self.mcp.tool(name=tool_name, description=tool_description)(playbook_tool)
 
             logger.info(f"Registered playbook tool: {tool_name}")

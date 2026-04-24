@@ -21,7 +21,12 @@ class TestJWTUtils:
 
             tool_permissions = {
                 "admin": ["*"],
-                "user": ["list_playbooks", "ansible_playbook", "get_task_status", "playbook_*"],
+                "user": [
+                    "list_playbooks",
+                    "ansible_playbook",
+                    "get_task_status",
+                    "playbook_*",
+                ],
             }
 
             yield JWTUtils(
@@ -95,7 +100,9 @@ class TestJWTUtils:
         assert jwt_utils.check_permission("user", "list_playbooks") is True
         assert jwt_utils.check_permission("user", "ansible_playbook") is True
         assert jwt_utils.check_permission("user", "get_task_status") is True
-        assert jwt_utils.check_permission("user", "playbook_test") is True  # playbook_* pattern
+        assert (
+            jwt_utils.check_permission("user", "playbook_test") is True
+        )  # playbook_* pattern
         assert jwt_utils.check_permission("user", "ansible_shell") is False
         assert jwt_utils.check_permission("user", "install_python") is False
 

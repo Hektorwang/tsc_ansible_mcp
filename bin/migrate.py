@@ -12,6 +12,7 @@ Usage:
 
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pathlib import Path
@@ -60,7 +61,9 @@ def migrate():
         # Migration 2: Rename created_at -> create_time in hosts
         if "created_at" in hosts_columns and "create_time" not in hosts_columns:
             print("Renaming created_at -> create_time in hosts table...")
-            conn.execute(text("ALTER TABLE hosts RENAME COLUMN created_at TO create_time"))
+            conn.execute(
+                text("ALTER TABLE hosts RENAME COLUMN created_at TO create_time")
+            )
             conn.commit()
             print("  Done.")
         elif "create_time" in hosts_columns:
@@ -71,7 +74,9 @@ def migrate():
         # Migration 3: Rename updated_at -> update_time in hosts
         if "updated_at" in hosts_columns and "update_time" not in hosts_columns:
             print("Renaming updated_at -> update_time in hosts table...")
-            conn.execute(text("ALTER TABLE hosts RENAME COLUMN updated_at TO update_time"))
+            conn.execute(
+                text("ALTER TABLE hosts RENAME COLUMN updated_at TO update_time")
+            )
             conn.commit()
             print("  Done.")
         elif "update_time" in hosts_columns:
@@ -82,7 +87,9 @@ def migrate():
         # Migration 4: Rename created_at -> create_time in tasks
         if "created_at" in tasks_columns and "create_time" not in tasks_columns:
             print("Renaming created_at -> create_time in tasks table...")
-            conn.execute(text("ALTER TABLE tasks RENAME COLUMN created_at TO create_time"))
+            conn.execute(
+                text("ALTER TABLE tasks RENAME COLUMN created_at TO create_time")
+            )
             conn.commit()
             print("  Done.")
         elif "create_time" in tasks_columns:
@@ -93,7 +100,9 @@ def migrate():
         # Migration 5: Rename updated_at -> update_time in tasks
         if "updated_at" in tasks_columns and "update_time" not in tasks_columns:
             print("Renaming updated_at -> update_time in tasks table...")
-            conn.execute(text("ALTER TABLE tasks RENAME COLUMN updated_at TO update_time"))
+            conn.execute(
+                text("ALTER TABLE tasks RENAME COLUMN updated_at TO update_time")
+            )
             conn.commit()
             print("  Done.")
         elif "update_time" in tasks_columns:
@@ -104,7 +113,9 @@ def migrate():
         # Migration 6: Rename created_at -> create_time in contexts
         if "created_at" in contexts_columns and "create_time" not in contexts_columns:
             print("Renaming created_at -> create_time in contexts table...")
-            conn.execute(text("ALTER TABLE contexts RENAME COLUMN created_at TO create_time"))
+            conn.execute(
+                text("ALTER TABLE contexts RENAME COLUMN created_at TO create_time")
+            )
             conn.commit()
             print("  Done.")
         elif "create_time" in contexts_columns:
@@ -115,7 +126,9 @@ def migrate():
         # Migration 7: Rename updated_at -> update_time in contexts
         if "updated_at" in contexts_columns and "update_time" not in contexts_columns:
             print("Renaming updated_at -> update_time in contexts table...")
-            conn.execute(text("ALTER TABLE contexts RENAME COLUMN updated_at TO update_time"))
+            conn.execute(
+                text("ALTER TABLE contexts RENAME COLUMN updated_at TO update_time")
+            )
             conn.commit()
             print("  Done.")
         elif "update_time" in contexts_columns:

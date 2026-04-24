@@ -49,7 +49,9 @@ class TestPackageScanner:
             assert "tsc_tools" in package["filename"]
 
             # Test with distro and arch
-            package = scanner.get_latest_package("tsc_python", distro="RedHat", arch="x86_64")
+            package = scanner.get_latest_package(
+                "tsc_python", distro="RedHat", arch="x86_64"
+            )
             assert package is not None
             assert "RedHat" in package["filename"]
             assert "x86_64" in package["filename"]

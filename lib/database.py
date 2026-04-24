@@ -41,7 +41,8 @@ class Database:
             pool_recycle=3600,
         )
         self.session_local = sessionmaker(
-            bind=self.engine, expire_on_commit=False,
+            bind=self.engine,
+            expire_on_commit=False,
         )
         self._init_db()
         logger.info(f"Database initialized: {self.db_path}")
@@ -85,7 +86,10 @@ class TaskRepository:
         self.db = db
 
     def create(
-        self, task_id: str, task_type: str, parameters: Dict[str, Any],
+        self,
+        task_id: str,
+        task_type: str,
+        parameters: Dict[str, Any],
     ) -> None:
         now = datetime.now()
         with self.db.get_session() as session:
@@ -120,13 +124,9 @@ class TaskRepository:
             return {
                 "id": task.id,
                 "type": task.type,
-                "parameters": (
-                    json.loads(task.parameters) if task.parameters else {}
-                ),
+                "parameters": (json.loads(task.parameters) if task.parameters else {}),
                 "status": task.status,
-                "result": (
-                    json.loads(task.result) if task.result else None
-                ),
+                "result": (json.loads(task.result) if task.result else None),
                 "create_time": task.create_time.isoformat(),
                 "update_time": task.update_time.isoformat(),
             }
@@ -144,19 +144,16 @@ class TaskRepository:
             for task in tasks:
                 result.append(
                     {
-                            "id": task.id,
-                            "type": task.type,
-                            "parameters": (
-                                json.loads(task.parameters)
-                                if task.parameters else {}
-                            ),
-                            "status": task.status,
-                            "result": (
-                                json.loads(task.result) if task.result else None
-                            ),
-                            "create_time": task.create_time.isoformat(),
-                            "update_time": task.update_time.isoformat(),
-                        }
+                        "id": task.id,
+                        "type": task.type,
+                        "parameters": (
+                            json.loads(task.parameters) if task.parameters else {}
+                        ),
+                        "status": task.status,
+                        "result": (json.loads(task.result) if task.result else None),
+                        "create_time": task.create_time.isoformat(),
+                        "update_time": task.update_time.isoformat(),
+                    }
                 )
             msg = "Queried task list: status={}, count={}"
             logger.debug(msg, status, len(result))
@@ -176,9 +173,13 @@ class TaskRepository:
         cutoff_time = datetime.now().timestamp() - expiry_seconds
         cutoff_datetime = datetime.fromtimestamp(cutoff_time)
         with self.db.get_session() as session:
-            count = session.query(Task).filter(
-                Task.create_time < cutoff_datetime,
-            ).delete()
+            count = (
+                session.query(Task)
+                .filter(
+                    Task.create_time < cutoff_datetime,
+                )
+                .delete()
+            )
         logger.info("Cleaned up expired tasks: deleted %d records", count)
         return count
 
@@ -186,21 +187,46 @@ class TaskRepository:
         # pylint: disable=not-callable
         with self.db.get_session() as session:
             total = session.query(func.count(Task.id)).scalar() or 0
-            pending = session.query(func.count(Task.id)).filter(
-                Task.status == "pending",
-            ).scalar() or 0
-            running = session.query(func.count(Task.id)).filter(
-                Task.status == "running",
-            ).scalar() or 0
-            success = session.query(func.count(Task.id)).filter(
-                Task.status == "success",
-            ).scalar() or 0
-            failed = session.query(func.count(Task.id)).filter(
-                Task.status == "failed",
-            ).scalar() or 0
-            partial_success = session.query(func.count(Task.id)).filter(
-                Task.status == "partial_success",
-            ).scalar() or 0
+            pending = (
+                session.query(func.count(Task.id))
+                .filter(
+                    Task.status == "pending",
+                )
+                .scalar()
+                or 0
+            )
+            running = (
+                session.query(func.count(Task.id))
+                .filter(
+                    Task.status == "running",
+                )
+                .scalar()
+                or 0
+            )
+            success = (
+                session.query(func.count(Task.id))
+                .filter(
+                    Task.status == "success",
+                )
+                .scalar()
+                or 0
+            )
+            failed = (
+                session.query(func.count(Task.id))
+                .filter(
+                    Task.status == "failed",
+                )
+                .scalar()
+                or 0
+            )
+            partial_success = (
+                session.query(func.count(Task.id))
+                .filter(
+                    Task.status == "partial_success",
+                )
+                .scalar()
+                or 0
+            )
         return {
             "total": total,
             "pending": pending,
@@ -378,9 +404,7 @@ class Inventory:
                 common_vars.setdefault("ansible_user", "root")
 
             if host.ansible_private_key:
-                host_data[
-                    "ansible_ssh_private_key_file"
-                ] = host.ansible_private_key
+                host_data["ansible_ssh_private_key_file"] = host.ansible_private_key
 
             if host.ansible_python_interpreter:
                 host_data["ansible_python_interpreter"] = (
@@ -400,7 +424,8 @@ class Inventory:
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 yaml.dump(
-                    yaml_data, f,
+                    yaml_data,
+                    f,
                     default_flow_style=False,
                     allow_unicode=True,
                 )
@@ -433,9 +458,7 @@ class Inventory:
         if host.ansible_private_key:
             result["ansible_ssh_private_key_file"] = host.ansible_private_key
         if host.ansible_python_interpreter:
-            result["ansible_python_interpreter"] = (
-                host.ansible_python_interpreter
-            )
+            result["ansible_python_interpreter"] = host.ansible_python_interpreter
         return result
 
     def get_host(self, host: str) -> Optional[Dict[str, Any]]:
@@ -601,9 +624,7 @@ class Inventory:
                 host_record.ansible_port = port
             if password:
                 if host_record.ansible_password:
-                    host_record.ansible_old_password = (
-                        host_record.ansible_password
-                    )
+                    host_record.ansible_old_password = host_record.ansible_password
                 host_record.ansible_password = password
             if old_password:
                 host_record.ansible_old_password = old_password
@@ -621,7 +642,9 @@ class Inventory:
             }
 
     def update_python_interpreter(
-        self, host: str, python_path: str,
+        self,
+        host: str,
+        python_path: str,
     ) -> Dict[str, Any]:
         """Update host Python interpreter with atomic ORM + YAML sync.
 
@@ -636,7 +659,8 @@ class Inventory:
             host_record = session.query(Host).filter(Host.host == host).first()
             if not host_record:
                 logger.warning(
-                    "Host not found in inventory: %s, adding it", host,
+                    "Host not found in inventory: %s, adding it",
+                    host,
                 )
                 host_record = Host(
                     host=host,
@@ -653,7 +677,8 @@ class Inventory:
 
             logger.info(
                 "Updated host Python interpreter: %s -> %s",
-                host, python_path,
+                host,
+                python_path,
             )
             return {
                 "status": "success",

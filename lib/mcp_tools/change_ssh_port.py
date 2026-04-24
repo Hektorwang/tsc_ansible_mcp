@@ -68,7 +68,7 @@ Returns execution results for each host, including success/failure status and de
             for host in hosts:
                 results[host] = {
                     "status": "failed",
-                    "message": f"Invalid port: {new_port}. Must be 22 or 1024-65535"
+                    "message": f"Invalid port: {new_port}. Must be 22 or 1024-65535",
                 }
             server.task_repo.update(task_id, "failed", results)
             return results
@@ -78,7 +78,7 @@ Returns execution results for each host, including success/failure status and de
             for host in hosts:
                 results[host] = {
                     "status": "failed",
-                    "message": f"Host count {len(hosts)} exceeds limit of {MAX_HOSTS}"
+                    "message": f"Host count {len(hosts)} exceeds limit of {MAX_HOSTS}",
                 }
             server.task_repo.update(task_id, "failed", results)
             return results
@@ -102,7 +102,7 @@ Returns execution results for each host, including success/failure status and de
             if host_status.get("error"):
                 results[host] = {
                     "status": "failed",
-                    "message": f"Host unreachable: {host_status.get('error')}"
+                    "message": f"Host unreachable: {host_status.get('error')}",
                 }
                 continue
 
@@ -158,7 +158,9 @@ Returns execution results for each host, including success/failure status and de
             server.task_repo.update(task_id, "failed", results)
             return results
 
-        logger.info(f"[{task_id}] Step 3: Verify connectivity for {len(success_hosts)} successful hosts")
+        logger.info(
+            f"[{task_id}] Step 3: Verify connectivity for {len(success_hosts)} successful hosts"
+        )
 
         inventory_updates: Dict[str, Dict[str, Any]] = {}
 
@@ -168,7 +170,7 @@ Returns execution results for each host, including success/failure status and de
             if inventory_result.get("status") != "success":
                 results[host] = {
                     "status": "failed",
-                    "message": f"Failed to update inventory: {inventory_result.get('message')}"
+                    "message": f"Failed to update inventory: {inventory_result.get('message')}",
                 }
                 success_hosts.remove(host)
                 continue
@@ -191,7 +193,8 @@ Returns execution results for each host, including success/failure status and de
         server.task_repo.update(task_id, overall_status, results)
         logger.info(
             "MCP tool response: change_ssh_port, task_id=%s, results=%s",
-            task_id, results
+            task_id,
+            results,
         )
         return results
 
@@ -239,7 +242,7 @@ def _verify_connectivity(
         if rc == 0:
             results[host] = {
                 "status": "success",
-                "message": f"SSH port changed to {new_port} successfully, connectivity verified"
+                "message": f"SSH port changed to {new_port} successfully, connectivity verified",
             }
         else:
             hosts_fallback_needed.append(host)
@@ -258,7 +261,9 @@ def _verify_connectivity(
                 timeout=30,
                 task_id=task_id,
             )
-            logger.info(f"[{task_id}] Step 3b: Fallback verify for {host}: {fallback_result}")
+            logger.info(
+                f"[{task_id}] Step 3b: Fallback verify for {host}: {fallback_result}"
+            )
 
             host_fallback_results = fallback_result.get("results", {})
             host_fallback_result = host_fallback_results.get(host, {})
@@ -274,12 +279,12 @@ def _verify_connectivity(
                 if inventory_result.get("status") != "success":
                     results[host] = {
                         "status": "failed",
-                        "message": f"Fallback successful but inventory update failed: {inventory_result.get('message')}"
+                        "message": f"Fallback successful but inventory update failed: {inventory_result.get('message')}",
                     }
             else:
                 results[host] = {
                     "status": "failed",
-                    "message": f"Both new port {new_port} and old port {old_port} connectivity failed"
+                    "message": f"Both new port {new_port} and old port {old_port} connectivity failed",
                 }
 
     return results

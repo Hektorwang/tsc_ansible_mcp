@@ -478,7 +478,9 @@ class Executor:
 
             if event_type == "runner_on_ok":
                 res = event_data.get("res", {})
-                logger.info(f"[_parse_result] Host {host} runner_on_ok event: res type={type(res)}, res={res}")
+                logger.info(
+                    f"[_parse_result] Host {host} runner_on_ok event: res type={type(res)}, res={res}"
+                )
                 if isinstance(res, dict):
                     results[host] = {
                         "rc": res.get("rc", 0),

@@ -8,14 +8,3 @@ PyYAML>=6.0.3
 SQLAlchemy>=2.0.49
 starlette>=1.0.0
 passlib>=1.7.4
-asynssh>=2.22.0
-# 不要修改以下开发工具
-# black
-# mypy
-# pylint
-# isort
-# ipython
-# mcp[cli]
-# pytest>=7.0.0
-# types-PyYAML
-# build

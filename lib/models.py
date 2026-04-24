@@ -13,6 +13,7 @@ from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
+
 class Host(Base):
     """Host inventory model."""
 
@@ -31,14 +32,14 @@ class Host(Base):
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
-        nullable=False
+        nullable=False,
     )
     update_time = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
-        nullable=False
+        nullable=False,
     )
 
 
@@ -56,14 +57,14 @@ class Task(Base):
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
-        nullable=False
+        nullable=False,
     )
     update_time = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
-        nullable=False
+        nullable=False,
     )
 
 
@@ -78,14 +79,14 @@ class Context(Base):
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
-        nullable=False
+        nullable=False,
     )
     update_time = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
         server_default=func.now(),
-        nullable=False
+        nullable=False,
     )
 
 
