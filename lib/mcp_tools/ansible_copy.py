@@ -35,7 +35,7 @@ def register_ansible_copy(server):
 
 ## Return Value
 Returns execution results including rc, stdout, and stderr for each host.
-If the task takes longer than expected, status will be "running" - use get_task_status(task_id) to poll for the final result.
+If the task takes longer than expected, status will be "running" - use get_result(task_id) to poll for the final result.
 
 ## Usage Example
 {

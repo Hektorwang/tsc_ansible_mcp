@@ -25,6 +25,7 @@ def register_check_host_status(server):
 
 ## Return Value
 Returns detection results for each host including architecture, distribution, and installation status of tsc_tools and tsc_python.
+If the task takes longer than expected, status will be "running" - use get_result(task_id) to poll for the final result.
 
 ## Usage Example
 {

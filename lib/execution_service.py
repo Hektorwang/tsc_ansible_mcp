@@ -54,14 +54,14 @@ class ExecutionService:
         if thread.is_alive():
             self.logger.warning(
                 f"Task {task_id} still running after {self.TOOL_WAIT_TIMEOUT}s wait, "
-                "returning running status. Use get_task_status(task_id) to poll result."
+                "returning running status. Use get_result(task_id) to poll result."
             )
             return {
                 "task_id": task_id,
                 "status": "running",
                 "message": (
                     f"Task is running in background. "
-                    f"Use get_task_status('{task_id}') to poll for the result."
+                    f"Poll every 30-60 seconds using get_result('{task_id}') to check status."
                 ),
             }
 

@@ -136,6 +136,44 @@ class TaskResultStore:
 
         return results
 
+    def get_host_result(self, task_id: str, host: str) -> Optional[Dict[str, Any]]:
+        """Get execution result for a specific host.
+
+        Args:
+            task_id: Task ID.
+            host: Host IP address.
+
+        Returns:
+            Host result data including rc, stdout, stderr, and status.
+            None if task or host not found.
+        """
+        result_path = self._get_result_path(task_id)
+
+        if not result_path.exists():
+            logger.warning(f"Task result not found: {task_id}")
+            return None
+
+        with result_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        results = data.get("results")
+        if results is None:
+            return None
+
+        host_results = results.get("results", {})
+        if host not in host_results:
+            logger.warning(f"Host {host} not found in task {task_id}")
+            return None
+
+        # Get host result and add status field
+        host_result = host_results[host].copy()
+        success_hosts = set(results.get("success_hosts", []))
+        host_result["status"] = "success" if host in success_hosts else "failed"
+        host_result["host"] = host
+        host_result["task_id"] = task_id
+
+        return host_result
+
     def delete_result(self, task_id: str) -> bool:
         """Delete result file.
 

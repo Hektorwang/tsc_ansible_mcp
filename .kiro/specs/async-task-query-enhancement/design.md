@@ -240,7 +240,7 @@ def get_host_detail(
 }
 ```
 
-**超过55秒（运行中）**：
+**超过30秒（运行中）**：
 ```json
 {
   "task_id": "xxx",

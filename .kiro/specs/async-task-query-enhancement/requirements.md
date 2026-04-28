@@ -1,166 +1,165 @@
-# Requirements Document: Enhanced Async Task Query System
+# 需求文档：异步任务查询增强系统
 
-## Introduction
+## 简介
 
-This feature enhances the existing async task execution system by implementing a structured three-tier query pattern. Currently, all async tools (ansible_shell, ansible_copy, ansible_fetch, check_host_status) return task_id and support basic result querying via get_result. This enhancement adds:
+本功能通过实现结构化的三层查询模式来增强现有的异步任务执行系统。目前，所有异步工具（ansible_shell、ansible_copy、ansible_fetch、check_host_status）都会返回 task_id 并支持通过 get_result 进行基本的结果查询。本次增强添加了：
 
-1. **Immediate validation response** with clear polling guidance for LLM agents
-2. **Three-tier query pattern**: Task summary → Host list → Individual host details
-3. **Structured statistics** showing success/failed host counts
-4. **Individual host detail queries** by task_id + host IP
+1. **即时验证响应**：为 LLM 代理提供清晰的轮询指导
+2. **三层查询模式**：任务摘要 → 主机列表 → 单个主机详情
+3. **结构化统计**：显示成功/失败主机数量
+4. **单个主机详情查询**：通过 task_id + 主机 IP 查询
 
-The goal is to provide LLM agents with clear, progressive access to task results without overwhelming context, while maintaining backward compatibility with existing implementations.
+目标是为 LLM 代理提供清晰的、渐进式的任务结果访问方式，避免上下文过载，同时保持与现有实现的向后兼容性。
 
-## Glossary
+## 术语表
 
-- **Task**: An asynchronous operation (shell command, file copy, file fetch, or host status check) executed across multiple target hosts
-- **Task_ID**: Unique identifier (UUID) assigned to each task upon creation
-- **Query_Service**: The enhanced get_result tool that provides three-tier query capabilities
-- **Host_Result**: Execution result for a single host, including return code (rc), stdout, stderr, and status
-- **Task_Summary**: High-level task information including overall status and success/failed host counts
-- **LLM_Agent**: The AI agent that invokes MCP tools and interprets results
-- **Polling**: Periodic querying of task status using task_id until completion
-- **Task_Repository**: SQLite database storing task metadata and summary results
-- **Result_Store**: JSON file storage for detailed host-level execution results
+- **Task（任务）**：在多个目标主机上执行的异步操作（shell 命令、文件复制、文件获取或主机状态检查）
+- **Task_ID（任务ID）**：任务创建时分配的唯一标识符（UUID）
+- **Query_Service（查询服务）**：提供三层查询能力的增强版 get_result 工具
+- **Host_Result（主机结果）**：单个主机的执行结果，包括返回码（rc）、标准输出、标准错误和状态
+- **Task_Summary（任务摘要）**：高层任务信息，包括总体状态和成功/失败主机数量
+- **LLM_Agent（LLM代理）**：调用 MCP 工具并解释结果的 AI 代理
+- **Polling（轮询）**：使用 task_id 定期查询任务状态直到完成
+- **Task_Repository（任务仓库）**：存储任务元数据和摘要结果的 SQLite 数据库
+- **Result_Store（结果存储）**：存储详细主机级执行结果的 JSON 文件存储
 
-## Requirements
+## 需求
 
-### Requirement 1: Immediate Task Validation and Response
+### 需求 1：即时任务验证和响应
 
-**User Story:** As an LLM agent, I want to receive immediate validation feedback when I submit a task, so that I know whether my request is valid and can begin polling for results.
+**用户故事：** 作为 LLM 代理，我希望在提交任务时立即收到验证反馈，以便知道我的请求是否有效并可以开始轮询结果。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. WHEN an async tool (ansible_shell, ansible_copy, ansible_fetch, check_host_status) receives a request, THE Tool SHALL validate all required parameters before creating the task
-2. IF validation fails, THEN THE Tool SHALL return an error response with status "error" and a descriptive message
-3. WHEN validation succeeds, THE Tool SHALL create a task_id and return it immediately
-4. WHEN a task is created, THE Tool SHALL include polling guidance in the response message
-5. THE polling guidance SHALL recommend checking task status every 30-60 seconds using get_result(task_id)
-6. WHEN a task completes within 55 seconds, THE Tool SHALL return the complete result directly
-7. WHEN a task exceeds 55 seconds, THE Tool SHALL return status "running" with the task_id and polling instructions
+1. 当异步工具（ansible_shell、ansible_copy、ansible_fetch、check_host_status）收到请求时，工具应在创建任务之前验证所有必需参数
+2. 如果验证失败，则工具应返回状态为 "error" 的错误响应和描述性消息
+3. 当验证成功时，工具应创建 task_id 并立即返回
+4. 当任务创建时，工具应在响应消息中包含轮询指导
+5. 轮询指导应建议每 30-60 秒使用 get_result(task_id) 检查任务状态
+6. 当任务在 55 秒内完成时，工具应直接返回完整结果
+7. 当任务超过 55 秒时，工具应返回状态 "running" 以及 task_id 和轮询说明
 
-### Requirement 2: Task Summary Query (Tier 1)
+### 需求 2：任务摘要查询（第一层）
 
-**User Story:** As an LLM agent, I want to query a task's overall status and statistics, so that I can understand the big picture before diving into host details.
+**用户故事：** 作为 LLM 代理，我希望查询任务的总体状态和统计信息，以便在深入了解主机详情之前了解大局。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. WHEN get_result is called with only task_id, THE Query_Service SHALL return a task summary
-2. THE task summary SHALL include the task_id, overall status, total host count, success host count, and failed host count
-3. WHEN the task is still running, THE Query_Service SHALL return status "running" with a message to poll again
-4. WHEN the task is not found, THE Query_Service SHALL return status "not_found" with task_id
-5. WHEN the task has no result data yet, THE Query_Service SHALL return status with a message indicating no result data
-6. THE task summary SHALL NOT include individual host details (stdout, stderr, rc)
-7. FOR ALL completed tasks, the sum of success_count and failed_count SHALL equal total_host_count
+1. 当仅使用 task_id 调用 get_result 时，查询服务应返回任务摘要
+2. 任务摘要应包括 task_id、总体状态、主机总数、成功主机数和失败主机数
+3. 当任务仍在运行时，查询服务应返回状态 "running" 并提示再次轮询
+4. 当任务未找到时，查询服务应返回状态 "not_found" 和 task_id
+5. 当任务尚无结果数据时，查询服务应返回状态并提示无结果数据
+6. 任务摘要不应包含单个主机详情（stdout、stderr、rc）
+7. 对于所有已完成的任务，success_count 和 failed_count 之和应等于 total_host_count
 
-### Requirement 3: Host List Query with Status Filter (Tier 2)
+### 需求 3：带状态过滤的主机列表查询（第二层）
 
-**User Story:** As an LLM agent, I want to retrieve a list of hosts filtered by execution status, so that I can identify which hosts succeeded or failed without retrieving full details.
+**用户故事：** 作为 LLM 代理，我希望检索按执行状态过滤的主机列表，以便在不检索完整详情的情况下识别哪些主机成功或失败。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. WHEN get_result is called with task_id and status="failed", THE Query_Service SHALL return all failed host results
-2. WHEN get_result is called with task_id and status="success", THE Query_Service SHALL return all successful host results
-3. THE failed host results SHALL include host IP, rc, stdout, stderr for each failed host
-4. THE successful host results SHALL include host IP, rc, stdout, stderr for each successful host
-5. THE response SHALL include total_failed or total_success count matching the number of returned hosts
-6. WHEN no hosts match the status filter, THE Query_Service SHALL return an empty host list with count 0
-7. THE status filter SHALL accept only "failed" or "success" as valid values
+1. 当使用 task_id 和 status="failed" 调用 get_result 时，查询服务应返回所有失败主机结果
+2. 当使用 task_id 和 status="success" 调用 get_result 时，查询服务应返回所有成功主机结果
+3. 失败主机结果应包括每个失败主机的主机 IP、rc、stdout、stderr
+4. 成功主机结果应包括每个成功主机的主机 IP、rc、stdout、stderr
+5. 响应应包括与返回主机数量匹配的 total_failed 或 total_success 计数
+6. 当没有主机匹配状态过滤器时，查询服务应返回空主机列表，计数为 0
+7. 状态过滤器应仅接受 "failed" 或 "success" 作为有效值
 
-### Requirement 4: Individual Host Detail Query (Tier 3)
+### 需求 4：单个主机详情查询（第三层）
 
-**User Story:** As an LLM agent, I want to query execution details for a specific host, so that I can investigate individual failures without retrieving all host results.
+**用户故事：** 作为 LLM 代理，我希望查询特定主机的执行详情，以便在不检索所有主机结果的情况下调查单个故障。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. WHEN get_host_detail is called with task_id and host IP, THE Query_Service SHALL return the execution result for that specific host
-2. THE host detail SHALL include host IP, rc, stdout, stderr, and execution status
-3. WHEN the specified host is not found in the task results, THE Query_Service SHALL return status "not_found" with a descriptive message
-4. WHEN the task_id is invalid, THE Query_Service SHALL return status "not_found" for the task
-5. THE host IP parameter SHALL match exactly the host identifier used in the task execution
-6. THE response SHALL include only the requested host's data, not other hosts
+1. 当使用 task_id 和主机 IP 调用 get_host_detail 时，查询服务应返回该特定主机的执行结果
+2. 主机详情应包括主机 IP、rc、stdout、stderr 和执行状态
+3. 当在任务结果中未找到指定主机时，查询服务应返回状态 "not_found" 和描述性消息
+4. 当 task_id 无效时，查询服务应为任务返回状态 "not_found"
+5. 主机 IP 参数应与任务执行中使用的主机标识符完全匹配
+6. 响应应仅包含请求主机的数据，不包含其他主机
 
-### Requirement 5: Enhanced Tool Response Guidance
+### 需求 5：增强的工具响应指导
 
-**User Story:** As an LLM agent, I want clear instructions in tool responses, so that I know what to do next without guessing.
+**用户故事：** 作为 LLM 代理，我希望在工具响应中获得清晰的说明，以便知道下一步该做什么而无需猜测。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. WHEN an async tool returns status "running", THE Tool SHALL include a message with the exact get_result call syntax
-2. THE message SHALL specify the recommended polling interval (30-60 seconds)
-3. WHEN get_result returns a task summary with failures, THE Query_Service SHALL include guidance on querying failed hosts
-4. THE guidance SHALL mention using status="failed" to retrieve failed host details
-5. WHEN get_result returns failed host list, THE Query_Service SHALL include guidance on querying individual host details
-6. THE guidance SHALL mention using get_host_detail(task_id, host_ip) for specific host investigation
-7. ALL guidance messages SHALL be concise (under 200 characters) to minimize token usage
+1. 当异步工具返回状态 "running" 时，工具应包含带有确切 get_result 调用语法的消息
+2. 消息应指定建议的轮询间隔（30-60 秒）
+3. 当 get_result 返回带有失败的任务摘要时，查询服务应包含查询失败主机的指导
+4. 指导应提及使用 status="failed" 检索失败主机详情
+5. 当 get_result 返回失败主机列表时，查询服务应包含查询单个主机详情的指导
+6. 指导应提及使用 get_host_detail(task_id, host_ip) 进行特定主机调查
+7. 所有指导消息应简洁（少于 200 个字符）以最小化 token 使用
 
-### Requirement 6: Backward Compatibility
+### 需求 6：向后兼容性
 
-**User Story:** As a system maintainer, I want existing integrations to continue working, so that the enhancement does not break current functionality.
+**用户故事：** 作为系统维护者，我希望现有集成继续工作，以便增强不会破坏当前功能。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. WHEN get_result is called with task_id only (no status parameter), THE Query_Service SHALL return the task summary (new behavior)
-2. WHEN get_result is called with task_id and status="failed", THE Query_Service SHALL return failed host results (existing behavior preserved)
-3. WHEN get_result is called with task_id and status="success", THE Query_Service SHALL return successful host results (enhanced from existing)
-4. THE Task_Repository database schema SHALL remain unchanged
-5. THE Result_Store file format SHALL remain unchanged
-6. ALL existing async tools (ansible_shell, ansible_copy, ansible_fetch, check_host_status) SHALL continue to work without modification to their core logic
-7. THE 55-second timeout behavior SHALL remain unchanged
+1. 当仅使用 task_id 调用 get_result（无 status 参数）时，查询服务应返回任务摘要（新行为）
+2. 当使用 task_id 和 status="failed" 调用 get_result 时，查询服务应返回失败主机结果（保留现有行为）
+3. 当使用 task_id 和 status="success" 调用 get_result 时，查询服务应返回成功主机结果（从现有增强）
+4. Task_Repository 数据库架构应保持不变
+5. Result_Store 文件格式应保持不变
+6. 所有现有异步工具（ansible_shell、ansible_copy、ansible_fetch、check_host_status）应继续工作，无需修改其核心逻辑
+7. 55 秒超时行为应保持不变
 
-### Requirement 7: Query Service Tool Registration
+### 需求 7：查询服务工具注册
 
-**User Story:** As a developer, I want the new query tools to be properly registered in the MCP server, so that LLM agents can discover and use them.
+**用户故事：** 作为开发人员，我希望新查询工具在 MCP 服务器中正确注册，以便 LLM 代理可以发现和使用它们。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. THE Query_Service SHALL register get_result as an MCP tool with updated description
-2. THE Query_Service SHALL register get_host_detail as a new MCP tool
-3. THE get_result tool description SHALL document all three query modes: summary, failed hosts, successful hosts
-4. THE get_host_detail tool description SHALL document the task_id and host parameters
-5. THE tool descriptions SHALL include usage examples for each query mode
-6. THE tool descriptions SHALL specify required and optional parameters
-7. THE tool descriptions SHALL be written in clear, concise language suitable for LLM interpretation
+1. 查询服务应使用更新的描述将 get_result 注册为 MCP 工具
+2. 查询服务应将 get_host_detail 注册为新的 MCP 工具
+3. get_result 工具描述应记录所有三种查询模式：摘要、失败主机、成功主机
+4. get_host_detail 工具描述应记录 task_id 和 host 参数
+5. 工具描述应包括每种查询模式的使用示例
+6. 工具描述应指定必需和可选参数
+7. 工具描述应以适合 LLM 解释的清晰、简洁的语言编写
 
-### Requirement 8: Error Handling and Edge Cases
+### 需求 8：错误处理和边缘情况
 
-**User Story:** As an LLM agent, I want clear error messages for invalid queries, so that I can correct my requests without confusion.
+**用户故事：** 作为 LLM 代理，我希望对无效查询获得清晰的错误消息，以便可以在不混淆的情况下更正我的请求。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. WHEN get_result is called with an invalid task_id format, THE Query_Service SHALL return status "error" with a descriptive message
-2. WHEN get_result is called with an invalid status value (not "failed" or "success"), THE Query_Service SHALL return status "error" with valid options
-3. WHEN get_host_detail is called with an invalid host IP format, THE Query_Service SHALL return status "error" with a descriptive message
-4. WHEN a task has no hosts (empty target list), THE Query_Service SHALL return summary with total_host_count 0
-5. WHEN a task is still running and get_host_detail is called, THE Query_Service SHALL return status "running" with a message to wait
-6. WHEN the Result_Store file is missing but Task_Repository has the task, THE Query_Service SHALL return status "error" with a message about missing result file
-7. ALL error messages SHALL include the task_id for traceability
+1. 当使用无效的 task_id 格式调用 get_result 时，查询服务应返回状态 "error" 和描述性消息
+2. 当使用无效的 status 值（不是 "failed" 或 "success"）调用 get_result 时，查询服务应返回状态 "error" 和有效选项
+3. 当使用无效的主机 IP 格式调用 get_host_detail 时，查询服务应返回状态 "error" 和描述性消息
+4. 当任务没有主机（空目标列表）时，查询服务应返回 total_host_count 为 0 的摘要
+5. 当任务仍在运行且调用 get_host_detail 时，查询服务应返回状态 "running" 并提示等待
+6. 当 Result_Store 文件缺失但 Task_Repository 有任务时，查询服务应返回状态 "error" 并提示缺少结果文件
+7. 所有错误消息应包含 task_id 以便追溯
 
-### Requirement 9: Performance and Scalability
+### 需求 9：性能和可扩展性
 
-**User Story:** As a system operator, I want query operations to be efficient, so that the system can handle high query volumes without degradation.
+**用户故事：** 作为系统操作员，我希望查询操作高效，以便系统可以处理高查询量而不会降级。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. WHEN get_result is called for task summary, THE Query_Service SHALL read only the Task_Repository (not the Result_Store file)
-2. WHEN get_result is called with status filter, THE Query_Service SHALL read the Result_Store file once and filter in memory
-3. WHEN get_host_detail is called, THE Query_Service SHALL read the Result_Store file once and extract only the requested host data
-4. THE Query_Service SHALL NOT load all host results into memory when only summary is requested
-5. FOR ALL query operations, response time SHALL be under 100ms for tasks with up to 100 hosts
-6. THE Query_Service SHALL support concurrent queries without data corruption
-7. THE Query_Service SHALL use file locking when reading Result_Store files to prevent race conditions
+1. 当为任务摘要调用 get_result 时，查询服务应仅读取 Task_Repository（不读取 Result_Store 文件）
+2. 当使用状态过滤器调用 get_result 时，查询服务应读取 Result_Store 文件一次并在内存中过滤
+3. 当调用 get_host_detail 时，查询服务应读取 Result_Store 文件一次并仅提取请求的主机数据
+4. 当仅请求摘要时，查询服务不应将所有主机结果加载到内存中
+5. 对于所有查询操作，对于最多 100 个主机的任务，响应时间应低于 100ms
+6. 查询服务应支持并发查询而不会出现数据损坏
+7. 查询服务在读取 Result_Store 文件时应使用文件锁定以防止竞争条件
 
-### Requirement 10: Documentation and Examples
+### 需求 10：文档和示例
 
-**User Story:** As a developer integrating with this system, I want comprehensive documentation, so that I can understand the query patterns without reading source code.
+**用户故事：** 作为与此系统集成的开发人员，我希望获得全面的文档，以便可以在不阅读源代码的情况下理解查询模式。
 
-#### Acceptance Criteria
+#### 验收标准
 
-1. THE system SHALL provide a usage guide document explaining the three-tier query pattern
-2. THE usage guide SHALL include examples for each query tier with sample requests and responses
-3. THE usage guide SHALL include a decision tree for when to use each query mode
-4. THE usage guide SHALL document the polling workflow with timing recommendations
-5. THE tool descriptions in MCP SHALL include at least one example per query mode
-6. THE error messages SHALL be documented with their causes and resolutions
-7. THE documentation SHALL be written in both English and Chinese (中英文双语)
-
+1. 系统应提供解释三层查询模式的使用指南文档
+2. 使用指南应包括每个查询层的示例，包含示例请求和响应
+3. 使用指南应包括何时使用每种查询模式的决策树
+4. 使用指南应记录带有时间建议的轮询工作流
+5. MCP 中的工具描述应包括每种查询模式至少一个示例
+6. 错误消息应记录其原因和解决方案
+7. 文档应以英文和中文编写（中英文双语）
