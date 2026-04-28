@@ -22,7 +22,10 @@ def register_ansible_copy(server):
 
 ## Prerequisites
 - Target hosts must be configured in inventory.yml first.
-- The tool auto-installs Python3 if missing on target hosts.
+- REQUIRED: Call check_host_status before this tool to verify:
+  1. Host is reachable via SSH.
+  2. Python is installed (required for the copy module).
+  If Python is not installed, run playbook_bootstrap_tsc_environment first.
 
 ## Parameters
 - targets (required): List of target hostnames or IPs.
@@ -31,7 +34,8 @@ def register_ansible_copy(server):
 - timeout (optional): Execution timeout in seconds.
 
 ## Return Value
-Returns complete execution results including rc, stdout, and stderr for each host.
+Returns execution results including rc, stdout, and stderr for each host.
+If the task takes longer than expected, status will be "running" - use get_task_status(task_id) to poll for the final result.
 
 ## Usage Example
 {

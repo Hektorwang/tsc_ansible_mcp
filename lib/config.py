@@ -318,10 +318,6 @@ class Config:
         return self.get("execution", {})
 
     @property
-    def execution_timeout(self) -> int:
-        return self.execution_settings.get("timeout", 300)
-
-    @property
     def execution_forks(self) -> int:
         return self.execution_settings.get("forks", 10)
 
@@ -573,6 +569,18 @@ class Config:
     @property
     def ansible_execution_rotation(self) -> str:
         return self.logging_settings.get("ansible_execution_rotation", "50 MB")
+
+    @property
+    def task_log_dir(self) -> Path:
+        """Directory for per-task log files."""
+        base_dir = Path(__file__).parent.parent.resolve()
+        rel = self.logging_settings.get("task_log_dir", "logs/tasks")
+        return base_dir / rel
+
+    @property
+    def task_log_retention(self) -> str:
+        """Retention period for per-task log files."""
+        return self.logging_settings.get("task_log_retention", "7 days")
 
     @property
     def max_failed_detail(self) -> int:

@@ -63,7 +63,6 @@ max_failed_detail = 10
 max_output_length = 1000
 result_store_dir = "logs/task_results"
 serial = 10
-timeout = 300
 
 [playbooks]
 path = "playbooks"
@@ -75,6 +74,8 @@ ansible_execution_retention = "30 days"
 ansible_execution_rotation = "50 MB"
 dir = "logs"
 level = "DEBUG"
+task_log_dir = "logs/tasks"
+task_log_retention = "7 days"
 
 [ssh]
 base_args = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ForwardX11=no -o GSSAPIAuthentication=no -o VerifyHostKeyDNS=no -o ControlMaster=auto -o ControlPath=/tmp/ansible-ssh-%h-%p-%r -o ControlPersist=60 -o ConnectTimeout=30"

@@ -121,6 +121,8 @@ class TaskRepository:
             if not task:
                 logger.debug(f"Task not found: {task_id}")
                 return None
+            base_dir = Path(__file__).parent.parent.resolve()
+            task_log_path = base_dir / "logs" / "tasks" / f"{task_id}.log"
             return {
                 "id": task.id,
                 "type": task.type,
@@ -129,6 +131,7 @@ class TaskRepository:
                 "result": (json.loads(task.result) if task.result else None),
                 "create_time": task.create_time.isoformat(),
                 "update_time": task.update_time.isoformat(),
+                "log_file": str(task_log_path) if task_log_path.exists() else None,
             }
 
     def list(

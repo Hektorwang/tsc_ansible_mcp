@@ -39,6 +39,9 @@ class AnsibleExecutionLogger:
         self.log_file: Optional[Path] = None
         self.retention = "30 days"
         self.rotation = "50 MB"
+        self._task_handlers: Dict[str, int] = {}  # task_id -> loguru handler id
+        self._task_log_dir: Path = Path(__file__).parent.parent / "logs" / "tasks"
+        self._task_log_retention: str = "7 days"
         if config:
             self._setup_from_config(config)
 
@@ -61,6 +64,14 @@ class AnsibleExecutionLogger:
         self.retention = config.get("logging.ansible_execution_retention", "30 days")
         self.rotation = config.get("logging.ansible_execution_rotation", "50 MB")
 
+        # Per-task log settings
+        self._task_log_dir = getattr(
+            config,
+            "task_log_dir",
+            Path(__file__).parent.parent / "logs" / "tasks",
+        )
+        self._task_log_retention = getattr(config, "task_log_retention", "7 days")
+
         self._setup_logger()
 
     def _setup_logger(self) -> None:
@@ -79,11 +90,33 @@ class AnsibleExecutionLogger:
             filter=lambda record: record["extra"].get("ansible_execution", False),
         )
 
-    def _log(self, level: str, message: str) -> None:
-        """Internal log method."""
+    def _get_task_log_path(self, task_id: str) -> Path:
+        """Get per-task log file path.
+
+        Args:
+            task_id: Task ID.
+
+        Returns:
+            Path to the task-specific log file.
+        """
+        task_log_dir = self._task_log_dir
+        task_log_dir.mkdir(parents=True, exist_ok=True)
+        return task_log_dir / f"{task_id}.log"
+
+    def _log(self, level: str, message: str, task_id: Optional[str] = None) -> None:
+        """Internal log method.
+
+        Args:
+            level: Log level string.
+            message: Log message.
+            task_id: Optional task ID used to bind per-task context.
+        """
         if not self.enabled:
             return
-        logger.bind(ansible_execution=True).log(level, message)
+        if task_id:
+            logger.bind(ansible_execution=True, task_id=task_id).log(level, message)
+        else:
+            logger.bind(ansible_execution=True).log(level, message)
 
     def log_execution_start(
         self,
@@ -107,33 +140,45 @@ class AnsibleExecutionLogger:
         if not self.enabled:
             return
 
-        self._log("INFO", "=" * 50 + " ANSIBLE EXECUTION START " + "=" * 50)
-        self._log("INFO", f"Task ID: {task_id}")
+        self._log("INFO", "=" * 50 + " ANSIBLE EXECUTION START " + "=" * 50, task_id=task_id)
+        self._log("INFO", f"Task ID: {task_id}", task_id=task_id)
         if user:
-            self._log("INFO", f"User: {user}")
-        self._log("INFO", f"Timeout: {timeout}s")
+            self._log("INFO", f"User: {user}", task_id=task_id)
+        self._log("INFO", f"Timeout: {timeout}s", task_id=task_id)
 
         targets = list(inventory.get("all", {}).get("hosts", {}).keys())
-        self._log("INFO", f"Targets: {targets}")
+        self._log("INFO", f"Targets: {targets}", task_id=task_id)
 
         if extravars:
-            self._log("INFO", f"Extravars: {json.dumps(extravars, ensure_ascii=False)}")
+            self._log("INFO", f"Extravars: {json.dumps(extravars, ensure_ascii=False)}", task_id=task_id)
 
-        self._log("INFO", "Playbook:")
+        self._log("INFO", "Playbook:", task_id=task_id)
         playbook_yaml = yaml.dump(
             playbook, allow_unicode=True, default_flow_style=False
         )
         for line in playbook_yaml.split("\n"):
             if line.strip():
-                self._log("INFO", f"  {line}")
+                self._log("INFO", f"  {line}", task_id=task_id)
 
-        self._log("INFO", "Inventory:")
+        self._log("INFO", "Inventory:", task_id=task_id)
         inventory_json = json.dumps(inventory, ensure_ascii=False, indent=2)
         for line in inventory_json.split("\n"):
             if line.strip():
-                self._log("INFO", f"  {line}")
+                self._log("INFO", f"  {line}", task_id=task_id)
 
-        self._log("INFO", "=" * 100)
+        self._log("INFO", "=" * 100, task_id=task_id)
+
+        # Add per-task log sink
+        log_path = self._get_task_log_path(task_id)
+        handler_id = logger.add(
+            str(log_path),
+            level="DEBUG",
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message}",
+            encoding="utf-8",
+            retention=self._task_log_retention,
+            filter=lambda record, tid=task_id: record["extra"].get("task_id") == tid,
+        )
+        self._task_handlers[task_id] = handler_id
 
     def log_execution_event(
         self,
@@ -165,37 +210,37 @@ class AnsibleExecutionLogger:
             log_level = "WARNING"
 
         self._log(
-            log_level, f"[EVENT] Task: {task_name} | Host: {host} | Status: {status}"
+            log_level, f"[EVENT] Task: {task_name} | Host: {host} | Status: {status}", task_id=task_id
         )
 
         if event_type in ["runner_on_failed", "runner_on_unreachable"]:
             error_msg = result.get("msg", result.get("stderr", "Unknown error"))
-            self._log("ERROR", f"[EVENT DETAIL] error: {error_msg}")
+            self._log("ERROR", f"[EVENT DETAIL] error: {error_msg}", task_id=task_id)
 
         stdout = result.get("stdout", "")
         if stdout:
             for line in stdout.split("\n"):
                 if line.strip():
-                    self._log("DEBUG", f"[EVENT DETAIL] stdout: {line}")
+                    self._log("DEBUG", f"[EVENT DETAIL] stdout: {line}", task_id=task_id)
         else:
-            self._log("DEBUG", "[EVENT DETAIL] stdout: ")
+            self._log("DEBUG", "[EVENT DETAIL] stdout: ", task_id=task_id)
 
         stderr = result.get("stderr", "")
         if stderr:
             for line in stderr.split("\n"):
                 if line.strip():
-                    self._log("DEBUG", f"[EVENT DETAIL] stderr: {line}")
+                    self._log("DEBUG", f"[EVENT DETAIL] stderr: {line}", task_id=task_id)
         else:
-            self._log("DEBUG", "[EVENT DETAIL] stderr: ")
+            self._log("DEBUG", "[EVENT DETAIL] stderr: ", task_id=task_id)
 
         rc = result.get("rc", 0)
-        self._log("DEBUG", f"[EVENT DETAIL] rc: {rc}")
+        self._log("DEBUG", f"[EVENT DETAIL] rc: {rc}", task_id=task_id)
 
         changed = result.get("changed", False)
-        self._log("DEBUG", f"[EVENT DETAIL] changed: {changed}")
+        self._log("DEBUG", f"[EVENT DETAIL] changed: {changed}", task_id=task_id)
 
         if event_type == "runner_on_unreachable":
-            self._log("DEBUG", "[EVENT DETAIL] unreachable: true")
+            self._log("DEBUG", "[EVENT DETAIL] unreachable: true", task_id=task_id)
 
     def log_execution_result(
         self,
@@ -215,17 +260,25 @@ class AnsibleExecutionLogger:
         if not self.enabled:
             return
 
-        self._log("INFO", "=" * 50 + " ANSIBLE EXECUTION RESULT " + "=" * 50)
-        self._log("INFO", f"Task ID: {task_id}")
-        self._log("INFO", f"Status: {status}")
-        self._log("INFO", "Summary:")
-        self._log("INFO", f"  Total hosts: {summary.get('total', 0)}")
-        self._log("INFO", f"  Success: {summary.get('success', 0)}")
-        self._log("INFO", f"  Failed: {summary.get('failed', 0)}")
+        self._log("INFO", "=" * 50 + " ANSIBLE EXECUTION RESULT " + "=" * 50, task_id=task_id)
+        self._log("INFO", f"Task ID: {task_id}", task_id=task_id)
+        self._log("INFO", f"Status: {status}", task_id=task_id)
+        self._log("INFO", "Summary:", task_id=task_id)
+        self._log("INFO", f"  Total hosts: {summary.get('total', 0)}", task_id=task_id)
+        self._log("INFO", f"  Success: {summary.get('success', 0)}", task_id=task_id)
+        self._log("INFO", f"  Failed: {summary.get('failed', 0)}", task_id=task_id)
         if "unreachable" in summary:
-            self._log("INFO", f"  Unreachable: {summary.get('unreachable', 0)}")
-        self._log("INFO", f"Elapsed: {elapsed:.2f}s")
-        self._log("INFO", "=" * 100)
+            self._log("INFO", f"  Unreachable: {summary.get('unreachable', 0)}", task_id=task_id)
+        self._log("INFO", f"Elapsed: {elapsed:.2f}s", task_id=task_id)
+        self._log("INFO", "=" * 100, task_id=task_id)
+
+        # Remove per-task log sink after execution completes
+        handler_id = self._task_handlers.pop(task_id, None)
+        if handler_id is not None:
+            try:
+                logger.remove(handler_id)
+            except Exception:
+                pass  # Handler may have already been removed
 
     def log_execution_error(
         self,
@@ -243,16 +296,16 @@ class AnsibleExecutionLogger:
         if not self.enabled:
             return
 
-        self._log("ERROR", "=" * 50 + " ANSIBLE EXECUTION ERROR " + "=" * 50)
-        self._log("ERROR", f"Task ID: {task_id}")
-        self._log("ERROR", f"Error: {error}")
+        self._log("ERROR", "=" * 50 + " ANSIBLE EXECUTION ERROR " + "=" * 50, task_id=task_id)
+        self._log("ERROR", f"Task ID: {task_id}", task_id=task_id)
+        self._log("ERROR", f"Error: {error}", task_id=task_id)
 
         if details:
-            self._log("ERROR", "Details:")
+            self._log("ERROR", "Details:", task_id=task_id)
             for key, value in details.items():
-                self._log("ERROR", f"  - {key}: {value}")
+                self._log("ERROR", f"  - {key}: {value}", task_id=task_id)
 
-        self._log("ERROR", "=" * 100)
+        self._log("ERROR", "=" * 100, task_id=task_id)
 
 
 ansible_logger = AnsibleExecutionLogger()

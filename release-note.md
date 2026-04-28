@@ -1,8 +1,32 @@
 # Release Notes
 
-## Version=1.13.0
+## Version=1.14.0
 
-2026-04-24
+2026-04-26
+
+### Bug 修复
+
+#### 1. 批量主机执行超时问题修复
+
+修复了通过 MCP 工具对批量主机（约 10 台）执行操作时，LLM 客户端收到 `MCP error -32001: Request timed out` 错误，以及 LLM 超时后后台任务状态悬空的问题。
+
+**问题原因：**
+- `ansible_shell`、`run_playbook`、`ansible_copy`、`ansible_fetch` 在执行前会隐式调用 `check_host_status` 作为前置探测，相当于串行执行两轮 ansible，总耗时翻倍
+- 所有执行方法同步阻塞 HTTP 请求，MCP 客户端超时后后台进程仍在运行，结果无法查询
+- `execution_service.execute_shell` 的 `finally` 块存在 `NameError` 隐患
+- `[execution]` 节的 `timeout` 配置项从未被使用，与 `[mcp].default_timeout` 并存造成混淆
+
+**修复内容：**
+- 移除 4 个执行方法中的隐式 `check_host_status` 前置调用，直接执行操作
+- 所有执行方法改为后台线程模式：主线程等待 55 秒，超时后返回 `running` 状态，后台继续执行并将结果写入 DB，LLM 可通过 `get_task_status(task_id)` 查询最终结果
+- 在 `ansible_shell`、`ansible_copy`、`ansible_fetch` 及所有 playbook 工具描述中明确提示 LLM 调用前必须先执行 `check_host_status`
+- 修复 `execute_shell` `finally` 块的 `NameError`
+- 删除无效的 `[execution].timeout` 配置项，统一使用 `[mcp].default_timeout`
+- 新增按任务 ID 拆分日志：每个任务创建独立日志文件 `logs/tasks/{task_id}.log`，`get_task_status` 返回 `log_file` 字段
+
+---
+
+## Version=1.13.0
 
 ### Bug 修复
 

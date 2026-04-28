@@ -866,76 +866,9 @@ class Executor:
             }
         self._current_task_hosts = targets
         try:
-            if detect_result is None:
-                detect_result = self.check_host_status(
-                    targets, timeout=timeout, skip_lock=True
-                )
-            unreachable_hosts = [
-                h for h, info in detect_result["results"].items() if info.get("error")
-            ]
-            if unreachable_hosts:
-                logger.warning(
-                    f"The following hosts are unreachable: {unreachable_hosts}"
-                )
-            reachable_hosts = [h for h in targets if h not in unreachable_hosts]
-            if not reachable_hosts:
-                return {
-                    "task_id": task_id or str(uuid.uuid4()),
-                    "status": "failed",
-                    "summary": {
-                        "total": len(targets),
-                        "success": 0,
-                        "failed": len(targets),
-                    },
-                    "results": {
-                        host: {
-                            "rc": -1,
-                            "stdout": "",
-                            "stderr": f"Host unreachable: {detect_result['results'][host].get('error')}",
-                            "elapsed": "0s",
-                            "error_type": "host_unreachable",
-                        }
-                        for host in targets
-                    },
-                }
-            hosts_need_python = [
-                h
-                for h, info in detect_result["results"].items()
-                if not info.get("error") and not info.get("python_installed")
-            ]
-            if hosts_need_python:
-                logger.warning(
-                    f"The following hosts need Python installed: {hosts_need_python}"
-                )
-                results = {}
-                for host in targets:
-                    error_msg = "tsc_python is not installed on this host. Please run playbook_bootstrap_tsc_environment first to install the required environment."
-                    if host in hosts_need_python:
-                        results[host] = {
-                            "rc": -1,
-                            "stdout": "",
-                            "stderr": error_msg,
-                            "elapsed": "0s",
-                            "error_type": "python_not_installed",
-                        }
-                    else:
-                        results[host] = {
-                            "rc": 0,
-                            "stdout": "",
-                            "stderr": "",
-                            "elapsed": "0s",
-                        }
-                return {
-                    "task_id": task_id or str(uuid.uuid4()),
-                    "status": "failed",
-                    "summary": {
-                        "total": len(targets),
-                        "success": len(targets) - len(hosts_need_python),
-                        "failed": len(hosts_need_python),
-                    },
-                    "results": results,
-                }
-
+            # detect_result parameter is retained for compatibility but no longer used.
+            # Host environment detection should be performed explicitly via check_host_status
+            # before calling this method.
             try:
                 inventory = self._build_inventory(targets)
             except ValueError as e:
@@ -1098,72 +1031,9 @@ class Executor:
             }
         self._current_task_hosts = targets
         try:
-            if detect_result is None:
-                detect_result = self.check_host_status(
-                    targets, timeout=timeout, skip_lock=True
-                )
-            unreachable_hosts = [
-                h for h, info in detect_result["results"].items() if info.get("error")
-            ]
-            if unreachable_hosts:
-                logger.warning(f"以下主机不可达: {unreachable_hosts}")
-            reachable_hosts = [h for h in targets if h not in unreachable_hosts]
-            if not reachable_hosts:
-                return {
-                    "task_id": str(uuid.uuid4()),
-                    "status": "failed",
-                    "summary": {
-                        "total": len(targets),
-                        "success": 0,
-                        "failed": len(targets),
-                    },
-                    "results": {
-                        host: {
-                            "rc": -1,
-                            "stdout": "",
-                            "stderr": f"主机不可达: {detect_result['results'][host].get('error')}",
-                            "elapsed": "0s",
-                            "error_type": "host_unreachable",
-                        }
-                        for host in targets
-                    },
-                }
-            hosts_need_python = [
-                h
-                for h, info in detect_result["results"].items()
-                if not info.get("error") and not info.get("python_installed")
-            ]
-            if hosts_need_python:
-                logger.warning(f"以下主机需要安装 Python: {hosts_need_python}")
-                results = {}
-                for host in targets:
-                    error_msg = "tsc_python is not installed on this host. Please run playbook_bootstrap_tsc_environment first to install the required environment."
-                    if host in hosts_need_python:
-                        results[host] = {
-                            "rc": -1,
-                            "stdout": "",
-                            "stderr": error_msg,
-                            "elapsed": "0s",
-                            "error_type": "python_not_installed",
-                        }
-                    else:
-                        results[host] = {
-                            "rc": 0,
-                            "stdout": "",
-                            "stderr": "",
-                            "elapsed": "0s",
-                        }
-                return {
-                    "task_id": task_id or str(uuid.uuid4()),
-                    "status": "failed",
-                    "summary": {
-                        "total": len(targets),
-                        "success": len(targets) - len(hosts_need_python),
-                        "failed": len(hosts_need_python),
-                    },
-                    "results": results,
-                }
-
+            # detect_result parameter is retained for compatibility but no longer used.
+            # Host environment detection should be performed explicitly via check_host_status
+            # before calling this method.
             try:
                 inventory = self._build_inventory(targets)
             except ValueError as e:
@@ -1179,7 +1049,7 @@ class Executor:
                         host: {
                             "rc": -1,
                             "stdout": "",
-                            "stderr": f"主机不可用: {e}",
+                            "stderr": f"Host not available: {e}",
                             "elapsed": "0s",
                             "error_type": "host_not_in_inventory",
                         }
@@ -1446,74 +1316,9 @@ class Executor:
             }
         self._current_task_hosts = targets
         try:
-            if detect_result is None:
-                detect_result = self.check_host_status(
-                    targets, timeout=timeout, skip_lock=True
-                )
-            # 检查是否有不可达的主机
-            unreachable_hosts = [
-                h for h, info in detect_result["results"].items() if info.get("error")
-            ]
-            if unreachable_hosts:
-                logger.warning(f"以下主机不可达: {unreachable_hosts}")
-            reachable_hosts = [h for h in targets if h not in unreachable_hosts]
-            if not reachable_hosts:
-                return {
-                    "task_id": task_id or str(uuid.uuid4()),
-                    "status": "failed",
-                    "summary": {
-                        "total": len(targets),
-                        "success": 0,
-                        "failed": len(targets),
-                    },
-                    "results": {
-                        host: {
-                            "rc": -1,
-                            "stdout": "",
-                            "stderr": f"主机不可达: {detect_result['results'][host].get('error')}",
-                            "elapsed": "0s",
-                            "error_type": "host_unreachable",
-                        }
-                        for host in targets
-                    },
-                }
-            # Check which hosts need Python installation (only check reachable hosts)
-            hosts_need_python = [
-                h
-                for h, info in detect_result["results"].items()
-                if h in reachable_hosts and not info.get("python_installed")
-            ]
-            if hosts_need_python:
-                logger.warning(f"以下主机需要安装 Python: {hosts_need_python}")
-                results = {}
-                for host in targets:
-                    error_msg = "tsc_python is not installed on this host. Please run playbook_bootstrap_tsc_environment first to install the required environment."
-                    if host in hosts_need_python:
-                        results[host] = {
-                            "rc": -1,
-                            "stdout": "",
-                            "stderr": error_msg,
-                            "elapsed": "0s",
-                            "error_type": "python_not_installed",
-                        }
-                    else:
-                        results[host] = {
-                            "rc": 0,
-                            "stdout": "",
-                            "stderr": "",
-                            "elapsed": "0s",
-                        }
-                return {
-                    "task_id": str(uuid.uuid4()),
-                    "status": "failed",
-                    "summary": {
-                        "total": len(targets),
-                        "success": len(targets) - len(hosts_need_python),
-                        "failed": len(hosts_need_python),
-                    },
-                    "results": results,
-                }
-
+            # detect_result parameter is retained for compatibility but no longer used.
+            # Host environment detection should be performed explicitly via check_host_status
+            # before calling this method.
             try:
                 inventory = self._build_inventory(targets)
             except ValueError as e:
@@ -1529,7 +1334,7 @@ class Executor:
                         host: {
                             "rc": -1,
                             "stdout": "",
-                            "stderr": f"主机不可用: {e}",
+                            "stderr": f"Host not available: {e}",
                             "elapsed": "0s",
                             "error_type": "host_not_in_inventory",
                         }
@@ -1612,77 +1417,9 @@ class Executor:
             }
         self._current_task_hosts = targets
         try:
-            if detect_result is None:
-                detect_result = self.check_host_status(
-                    targets, timeout=timeout, skip_lock=True
-                )
-            unreachable_hosts = [
-                h for h, info in detect_result["results"].items() if info.get("error")
-            ]
-            if unreachable_hosts:
-                logger.warning(f"以下主机不可达: {unreachable_hosts}")
-            reachable_hosts = [h for h in targets if h not in unreachable_hosts]
-            if not reachable_hosts:
-                return {
-                    "task_id": task_id or str(uuid.uuid4()),
-                    "status": "failed",
-                    "summary": {
-                        "total": len(targets),
-                        "success": 0,
-                        "failed": len(targets),
-                    },
-                    "results": {
-                        host: {
-                            "rc": -1,
-                            "dest": "",
-                            "checksum": "",
-                            "changed": False,
-                            "stderr": f"主机不可达: {detect_result['results'][host].get('error')}",
-                            "elapsed": "0s",
-                            "error_type": "host_unreachable",
-                        }
-                        for host in targets
-                    },
-                }
-            hosts_need_python = [
-                h
-                for h, info in detect_result["results"].items()
-                if not info.get("error") and not info.get("python_installed")
-            ]
-            if hosts_need_python:
-                logger.warning(f"以下主机需要安装 Python: {hosts_need_python}")
-                results = {}
-                for host in targets:
-                    error_msg = "tsc_python is not installed on this host. Please run playbook_bootstrap_tsc_environment first to install the required environment."
-                    if host in hosts_need_python:
-                        results[host] = {
-                            "rc": -1,
-                            "dest": "",
-                            "checksum": "",
-                            "changed": False,
-                            "stderr": error_msg,
-                            "elapsed": "0s",
-                            "error_type": "python_not_installed",
-                        }
-                    else:
-                        results[host] = {
-                            "rc": 0,
-                            "dest": "",
-                            "checksum": "",
-                            "changed": False,
-                            "stderr": "",
-                            "elapsed": "0s",
-                        }
-                return {
-                    "task_id": task_id or str(uuid.uuid4()),
-                    "status": "failed",
-                    "summary": {
-                        "total": len(targets),
-                        "success": len(targets) - len(hosts_need_python),
-                        "failed": len(hosts_need_python),
-                    },
-                    "results": results,
-                }
+            # detect_result parameter is retained for compatibility but no longer used.
+            # Host environment detection should be performed explicitly via check_host_status
+            # before calling this method.
             try:
                 inventory = self._build_inventory(targets)
             except ValueError as e:
@@ -1700,7 +1437,7 @@ class Executor:
                             "dest": "",
                             "checksum": "",
                             "changed": False,
-                            "stderr": f"主机不可用: {e}",
+                            "stderr": f"Host not available: {e}",
                             "elapsed": "0s",
                             "error_type": "host_not_in_inventory",
                         }

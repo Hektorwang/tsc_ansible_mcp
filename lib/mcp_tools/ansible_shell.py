@@ -22,7 +22,10 @@ def register_ansible_shell(server):
 
 ## Prerequisites
 - Target hosts must be configured in inventory.yml first.
-- The tool auto-installs Python3 if missing on target hosts.
+- REQUIRED: Call check_host_status before this tool to verify:
+  1. Host is reachable via SSH.
+  2. Python is installed (required for the shell module).
+  If Python is not installed, run playbook_bootstrap_tsc_environment first.
 
 ## Command Formatting Rules
 1. Wrap arguments in single quotes to avoid escaping issues. Example: `find /tmp -name '*.json'`
@@ -31,7 +34,8 @@ def register_ansible_shell(server):
 4. If you see 'Blacklisted high-risk command' warning, stop immediately and report to user.
 
 ## Return Value
-Returns complete execution results including rc, stdout, and stderr for each host. If output is too long, use get_result(task_id, host='hostname') to retrieve a specific host's result.
+Returns execution results including rc, stdout, and stderr for each host.
+If the task takes longer than expected, status will be "running" - use get_task_status(task_id) to poll for the final result.
 
 ## Usage Example
 {

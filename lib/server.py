@@ -126,7 +126,19 @@ playbook_system_check(targets=["192.168.1.1"], user="root", password="xxx")
 
         for tool_def in tool_definitions:
             tool_name = tool_def["name"]
-            tool_description = tool_def["description"]
+            # Prepend a mandatory prerequisites notice so LLM always calls
+            # check_host_status before invoking any playbook tool.
+            prerequisites_notice = (
+                "## Prerequisites\n"
+                "- Target hosts must be configured in inventory.yml first.\n"
+                "- REQUIRED: Call check_host_status before this tool to verify:\n"
+                "  1. Host is reachable via SSH.\n"
+                "  2. Python is installed (required for playbook execution).\n"
+                "  If Python is not installed, run playbook_bootstrap_tsc_environment first.\n"
+                "- If the task takes longer than expected, status will be \"running\" - "
+                "use get_task_status(task_id) to poll for the final result.\n\n"
+            )
+            tool_description = prerequisites_notice + tool_def["description"]
             playbook_name = tool_name.replace("playbook_", "")
 
             param_props = tool_def.get("parameters", {}).get("properties", {})
@@ -263,7 +275,7 @@ playbook_system_check(targets=["192.168.1.1"], user="root", password="xxx")
         app = FastAPI(
             title="TSC_ANSIBLE_MCP API",
             description="TSC Ansible MCP REST API service",
-            version="1.10.0",
+            version="1.14.0",
             docs_url="/docs",
             redoc_url="/redoc",
         )
