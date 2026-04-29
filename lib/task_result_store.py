@@ -160,7 +160,7 @@ class TaskResultStore:
         if results is None:
             return None
 
-        host_results = results.get("results", {})
+        host_results = results.get("results") or {}
         if host not in host_results:
             logger.warning(f"Host {host} not found in task {task_id}")
             return None
