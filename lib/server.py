@@ -275,7 +275,7 @@ playbook_system_check(targets=["192.168.1.1"], user="root", password="xxx")
         app = FastAPI(
             title="TSC_ANSIBLE_MCP API",
             description="TSC Ansible MCP REST API service",
-            version="1.14.0",
+            version=self.config.mcp_version,
             docs_url="/docs",
             redoc_url="/redoc",
         )

@@ -263,7 +263,18 @@ class Config:
 
     @property
     def mcp_version(self) -> str:
-        return self.mcp_settings.get("mcp_version", "99.99.99")
+        """Read version from release-note.md (line 3 format: ## Version=X.Y.Z)."""
+        try:
+            base_dir = Path(__file__).parent.parent.resolve()
+            release_note_path = base_dir / "release-note.md"
+            with release_note_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("## Version="):
+                        return line.split("=", 1)[1].strip()
+        except Exception as e:
+            logger.warning(f"Failed to read version from release-note.md: {e}")
+        return "0.0.0"
 
     @property
     def nginx_settings(self) -> Dict[str, Any]:

@@ -833,6 +833,251 @@ MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 RE
 - `credentials` (optional): SSH 凭据信息
 - `flat` (optional): 是否扁平化目录结构（默认 false）
 
+## Async Task Query API
+
+异步任务查询 API 提供三层查询模式，用于查询异步任务的执行结果。
+
+Async Task Query API provides a three-layer query pattern for retrieving async task execution results.
+
+---
+
+### get_result
+
+**用途 / Purpose**: 查询任务执行结果，支持三种查询模式。  
+Retrieve task execution results with three query modes.
+
+#### 参数 / Parameters
+
+| 参数 / Parameter | 类型 / Type | 必填 / Required | 说明 / Description |
+| ---------------- | ----------- | --------------- | ------------------- |
+| `task_id`        | string      | 是 / Yes        | 任务 ID / Task ID   |
+| `status`         | string      | 否 / No         | 状态过滤，有效值：`"failed"` 或 `"success"`。省略时返回摘要。<br>Status filter. Valid values: `"failed"` or `"success"`. Omit for summary. |
+
+#### 查询模式 / Query Modes
+
+##### 模式一：任务摘要（省略 status）/ Mode 1: Task Summary (status omitted)
+
+返回高层统计信息，不包含主机详情。  
+Returns high-level statistics without per-host details.
+
+**请求示例 / Request Example**:
+```json
+{"task_id": "job_abc123"}
+```
+
+**响应示例 / Response Example**:
+```json
+{
+  "task_id": "job_abc123",
+  "status": "partial_success",
+  "total_hosts": 10,
+  "success_count": 8,
+  "failed_count": 2,
+  "message": "Task completed with 2 failed host(s). Use get_result('job_abc123', status='failed') to see failed hosts"
+}
+```
+
+**字段说明 / Field Description**:
+
+| 字段 / Field    | 说明 / Description |
+| --------------- | ------------------- |
+| `task_id`       | 任务 ID / Task ID |
+| `status`        | 任务状态 / Task status |
+| `total_hosts`   | 目标主机总数 / Total number of target hosts |
+| `success_count` | 成功主机数 / Number of successful hosts |
+| `failed_count`  | 失败主机数 / Number of failed hosts |
+| `message`       | 操作指引 / Guidance message |
+
+##### 模式二：失败主机列表（status="failed"）/ Mode 2: Failed Hosts List
+
+返回所有失败主机及其详情。  
+Returns all failed hosts with execution details.
+
+**请求示例 / Request Example**:
+```json
+{"task_id": "job_abc123", "status": "failed"}
+```
+
+**响应示例 / Response Example**:
+```json
+{
+  "task_id": "job_abc123",
+  "status": "partial_success",
+  "failed_hosts": {
+    "192.168.1.10": {
+      "rc": 1,
+      "stdout": "",
+      "stderr": "bash: command not found"
+    },
+    "192.168.1.11": {
+      "rc": 2,
+      "stdout": "",
+      "stderr": "Permission denied"
+    }
+  },
+  "total_failed": 2,
+  "message": "Use get_host_detail(task_id, host_ip) to investigate specific host"
+}
+```
+
+##### 模式三：成功主机列表（status="success"）/ Mode 3: Success Hosts List
+
+返回所有成功主机及其详情。  
+Returns all successful hosts with execution details.
+
+**请求示例 / Request Example**:
+```json
+{"task_id": "job_abc123", "status": "success"}
+```
+
+**响应示例 / Response Example**:
+```json
+{
+  "task_id": "job_abc123",
+  "status": "partial_success",
+  "success_hosts": {
+    "192.168.1.1": {
+      "rc": 0,
+      "stdout": "Hello from 192.168.1.1",
+      "stderr": ""
+    },
+    "192.168.1.2": {
+      "rc": 0,
+      "stdout": "Hello from 192.168.1.2",
+      "stderr": ""
+    }
+  },
+  "total_success": 8
+}
+```
+
+#### 任务运行中响应 / Running Task Response
+
+当任务仍在执行时，返回以下格式：  
+When the task is still running:
+
+```json
+{
+  "task_id": "job_abc123",
+  "status": "running",
+  "message": "Task is still running. Poll again in 30-60 seconds using get_result('job_abc123')"
+}
+```
+
+#### 错误响应 / Error Responses
+
+**任务不存在 / Task not found**:
+```json
+{
+  "task_id": "job_abc123",
+  "status": "not_found",
+  "message": "Task job_abc123 not found in database"
+}
+```
+
+**无效 status 参数 / Invalid status parameter**:
+```json
+{
+  "task_id": "job_abc123",
+  "status": "error",
+  "message": "Invalid status parameter 'xyz'. Valid values: 'failed' or 'success'"
+}
+```
+
+**结果文件缺失 / Result file missing**:
+```json
+{
+  "task_id": "job_abc123",
+  "status": "error",
+  "message": "Result file for task job_abc123 is missing. The task exists in database but detailed results are not available."
+}
+```
+
+---
+
+### get_host_detail
+
+**用途 / Purpose**: 查询单个主机的执行详情（第三层查询）。  
+Query execution details for a specific host (Layer 3 query).
+
+#### 参数 / Parameters
+
+| 参数 / Parameter | 类型 / Type | 必填 / Required | 说明 / Description |
+| ---------------- | ----------- | --------------- | ------------------- |
+| `task_id`        | string      | 是 / Yes        | 任务 ID / Task ID   |
+| `host`           | string      | 是 / Yes        | 主机 IP 地址 / Host IP address |
+
+#### 请求示例 / Request Example
+
+```json
+{"task_id": "job_abc123", "host": "192.168.1.10"}
+```
+
+#### 成功响应 / Success Response
+
+```json
+{
+  "task_id": "job_abc123",
+  "host": "192.168.1.10",
+  "rc": 1,
+  "stdout": "",
+  "stderr": "bash: df: command not found",
+  "status": "failed"
+}
+```
+
+**字段说明 / Field Description**:
+
+| 字段 / Field | 说明 / Description |
+| ------------ | ------------------- |
+| `task_id`    | 任务 ID / Task ID |
+| `host`       | 主机 IP / Host IP |
+| `rc`         | 命令返回码（0 = 成功）/ Return code (0 = success) |
+| `stdout`     | 标准输出 / Standard output |
+| `stderr`     | 标准错误 / Standard error |
+| `status`     | `"success"` 或 `"failed"` |
+
+#### 错误响应 / Error Responses
+
+**任务不存在 / Task not found**:
+```json
+{
+  "task_id": "job_abc123",
+  "status": "not_found",
+  "message": "Task job_abc123 not found in database"
+}
+```
+
+**主机不存在 / Host not found**:
+```json
+{
+  "task_id": "job_abc123",
+  "host": "192.168.1.99",
+  "status": "not_found",
+  "message": "Host 192.168.1.99 not found in task job_abc123 results"
+}
+```
+
+**任务运行中 / Task running**:
+```json
+{
+  "task_id": "job_abc123",
+  "status": "running",
+  "message": "Task is still running. Wait and try again in 30-60 seconds"
+}
+```
+
+**结果文件缺失 / Result file missing**:
+```json
+{
+  "task_id": "job_abc123",
+  "status": "error",
+  "message": "Result file for task job_abc123 is missing. The task exists in database but detailed results are not available."
+}
+```
+
+---
+
 ## 4. 错误码说明
 
 ### 4.1 HTTP 状态码
