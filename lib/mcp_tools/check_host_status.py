@@ -8,6 +8,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from lib.permission import require_permission
+from lib.tool_description_loader import load_tool_description
 from lib.tsc_logger import get_logger
 
 logger = get_logger()
@@ -18,23 +19,7 @@ def register_check_host_status(server):
 
     @server.mcp.tool(
         name="check_host_status",
-        description="""Check host architecture, distribution, tsc_tools and tsc_python installation status.
-
-## Prerequisites
-- Target hosts must be configured in inventory.yml first.
-
-## Return Value
-Returns detection results for each host including architecture, distribution, and installation status of tsc_tools and tsc_python.
-If the task takes longer than expected, status will be "running" - use get_result(task_id) to poll for the final result.
-
-## Usage Example
-{
-  "targets": ["web-server-01", "db-server-02"]
-}
-
-## Note
-If tsc_tools or tsc_python are not installed, use the bootstrap_tsc_environment playbook to install them.
-""",
+        description=load_tool_description("check_host_status"),
     )
     @require_permission("check_host_status")
     def check_host_status(

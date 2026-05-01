@@ -314,11 +314,18 @@ class Executor:
 
             if playbook_file is not None:
                 resolved_playbook_path = playbook_file
-                # Cache playbook file in debug mode
+                # Cache playbook file in debug mode, with extravars substituted
                 if self.config.debug_enabled:
                     playbook_content = resolved_playbook_path.read_text(
                         encoding="utf-8"
                     )
+                    if extravars:
+                        for var_name, var_value in extravars.items():
+                            playbook_content = playbook_content.replace(
+                                f"{{{{ {var_name} }}}}", str(var_value)
+                            ).replace(
+                                f"{{{{{var_name}}}}}", str(var_value)
+                            )
                     self._cache_debug_file("playbook.yml", playbook_content)
             else:
                 resolved_playbook_path = tmpdir_path / "playbook.yml"
@@ -1074,21 +1081,29 @@ class Executor:
                     ],
                 }
             ]
+            final_task_id = task_id or str(uuid.uuid4())
             start_time = time.time()
-            result, events = self._run_ansible(playbook, inventory, timeout)
+            result, events = self._run_ansible(
+                playbook, inventory, timeout, task_id=final_task_id
+            )
             elapsed = time.time() - start_time
             results = self._parse_result(result, targets, events)
 
-            final_task_id = task_id or str(uuid.uuid4())
-            return {
-                "task_id": final_task_id,
-                "status": (
-                    "success"
-                    if all(r["rc"] == 0 for r in results.values())
-                    else "failed"
-                ),
-                "results": results,
-            }
+            # Fall back to result.stats when _parse_result couldn't match runner_on_ok
+            # events (e.g. when ansible_runner emits no per-host events).
+            stats = result.stats or {}
+            for host in targets:
+                if results[host]["rc"] == -1:
+                    ok_count = stats.get("ok", {}).get(host, 0)
+                    if ok_count > 0:
+                        results[host]["rc"] = 0
+                        results[host]["stdout"] = ""
+                        results[host]["stderr"] = ""
+
+            for host in results:
+                results[host]["elapsed"] = f"{elapsed:.2f}s"
+
+            return self._build_summary_result(final_task_id, results, elapsed, "ansible_shell")
         finally:
             # 释放主机锁
             self._release_hosts(targets)

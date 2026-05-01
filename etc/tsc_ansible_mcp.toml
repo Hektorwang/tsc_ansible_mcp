@@ -1,6 +1,6 @@
 # TSC_ANSIBLE_MCP 配置文件
 [tsc_repo]
-local_path = "/home/workspace/tsc_ansible_mcp/tsc_install"
+local_path = "./tsc_install"
 
 [auth]
 enabled = false
@@ -9,7 +9,7 @@ jwt_secret_key_file = "etc/jwt_secret_key.txt"
 
 [auth.tool_permissions]
 admin = ["*"]
-user = ["get_task_status", "playbook_*"]
+user = ["get_result", "get_host_detail", "check_host_status", "playbook_*"]
 
 [debug]
 enabled = true

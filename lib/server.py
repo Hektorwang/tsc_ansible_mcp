@@ -34,6 +34,7 @@ from lib.models import (
 )
 from lib.permission import require_permission
 from lib.playbook_scanner import PlaybookScanner
+from lib.tool_description_loader import load_instructions, load_playbook_prerequisites
 from lib.tsc_logger import get_logger, tsc_logger
 
 logger = get_logger()
@@ -42,48 +43,7 @@ logger = get_logger()
 class Server:
     """Unified service class providing both MCP and REST API"""
 
-    MCP_INSTRUCTIONS = """
-TSC Ansible MCP Service - Remote Host Automation Management Toolkit
-
-## Service Overview
-This service provides automated remote host management capabilities, including host status checking, target host runtime environment bootstraping, command execution, file distribution, and more.
-Built on Ansible, supporting batch operations on multiple hosts.
-
-## Core Features
-1. **Host Status Check** - Check architecture, distribution, tsc_tools, and tsc_python(a pre-compiled python3 environment) installation status
-2. **Software Installation** - Install tsc_tools and tsc_python(python3) via playbook_bootstrap_tsc_environment
-3. **Command Execution** - Execute shell commands on remote hosts
-4. **File Operations** - File distribution and retrieval
-5. **Playbook Execution** - Run Ansible playbooks
-
-## Recommended Workflow
-1. Call check_host_status to check host status
-2. If tsc_tools or tsc_python is not installed -> Call playbook_bootstrap_tsc_environment to install both
-3. After successful installation -> Perform other operations
-
-## Important Note
-If check_host_status reports that tsc_tools or tsc_python are not installed, use the bootstrap_tsc_environment playbook tool to install them.
-
-## Authentication Methods
-Supports both password and private key SSH authentication:
-- Password authentication: Provide user, password parameters
-- Private key authentication: Provide user, private_key parameters
-
-## Usage Examples
-```
-# 1. Check host status
-check_host_status(targets=["192.168.1.1"], user="root", password="xxx")
-
-# 2. Bootstrap environment (install tsc_tools and tsc_python)
-playbook_bootstrap_tsc_environment(targets=["192.168.1.1"], user="root", password="xxx")
-
-# 3. Execute command
-ansible_shell(targets=["192.168.1.1"], command="ls -la", user="root", password="xxx")
-
-# 4. Execute playbook
-playbook_system_check(targets=["192.168.1.1"], user="root", password="xxx")
-```
-"""
+    MCP_INSTRUCTIONS = load_instructions()
 
     def __init__(self, config: Optional[Config] = None):
         self.config = config or Config()
@@ -128,16 +88,7 @@ playbook_system_check(targets=["192.168.1.1"], user="root", password="xxx")
             tool_name = tool_def["name"]
             # Prepend a mandatory prerequisites notice so LLM always calls
             # check_host_status before invoking any playbook tool.
-            prerequisites_notice = (
-                "## Prerequisites\n"
-                "- Target hosts must be configured in inventory.yml first.\n"
-                "- REQUIRED: Call check_host_status before this tool to verify:\n"
-                "  1. Host is reachable via SSH.\n"
-                "  2. Python is installed (required for playbook execution).\n"
-                "  If Python is not installed, run playbook_bootstrap_tsc_environment first.\n"
-                "- If the task takes longer than expected, status will be \"running\" - "
-                "use get_task_status(task_id) to poll for the final result.\n\n"
-            )
+            prerequisites_notice = load_playbook_prerequisites() + "\n"
             tool_description = prerequisites_notice + tool_def["description"]
             playbook_name = tool_name.replace("playbook_", "")
 

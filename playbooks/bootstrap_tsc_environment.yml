@@ -55,11 +55,11 @@
         cmd: |-
           set -e
           set -o pipefail
-          [[ -f /tmp/tsc_tools.sh ]] || rm -f /tmp/tsc_tools.sh
+          [[ -f /tmp/tsc_tools.sh ]] && rm -f /tmp/tsc_tools.sh
           curl -k -sSL -o /tmp/tsc_tools.sh "{{ api_url }}?pkg_type=tsc_tools&distro={{ distro }}&arch={{ arch }}"
           chmod +x /tmp/tsc_tools.sh
           /tmp/tsc_tools.sh
-          [[ -f /tmp/tsc_tools.sh ]] || rm -f /tmp/tsc_tools.sh
+          [[ -f /tmp/tsc_tools.sh ]] && rm -f /tmp/tsc_tools.sh
         executable: /bin/bash
       register: tsc_tools_install
       retries: 3
@@ -72,11 +72,11 @@
         cmd: |-
           set -e
           set -o pipefail
-          [[ -f /tmp/tsc_python.sh ]] || rm -f /tmp/tsc_python.sh
+          [[ -f /tmp/tsc_python.sh ]] && rm -f /tmp/tsc_python.sh
           curl -k -sSL -o /tmp/tsc_python.sh "{{ api_url }}?pkg_type=tsc_python&distro={{ distro }}&arch={{ arch }}"
           chmod +x /tmp/tsc_python.sh
           /tmp/tsc_python.sh
-          [[ -f /tmp/tsc_python.sh ]] || rm -f /tmp/tsc_python.sh
+          [[ -f /tmp/tsc_python.sh ]] && rm -f /tmp/tsc_python.sh
         executable: /bin/bash
       register: tsc_python_install
       retries: 3

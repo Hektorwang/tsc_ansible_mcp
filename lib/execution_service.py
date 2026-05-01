@@ -61,7 +61,7 @@ class ExecutionService:
                 "status": "running",
                 "message": (
                     f"Task is running in background. "
-                    f"Poll every 30-60 seconds using get_result('{task_id}') to check status."
+                    f"Call get_result('{task_id}') every 60 seconds until status is no longer 'running'."
                 ),
             }
 

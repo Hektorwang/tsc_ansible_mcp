@@ -26,6 +26,17 @@ os.environ["ANSIBLE_CONFIG"] = (
     (Path(project_root) / "ansible.cfg").absolute().as_posix()
 )
 
+# Warn early if ansible-playbook is not on PATH, which would cause rc=127
+# at runtime. This typically means the server was started without sourcing
+# tsc_profile (e.g. source /home/tsc/tsc_profile && python3 bin/server.py).
+import shutil
+if not shutil.which("ansible-playbook"):
+    print(
+        "[WARNING] ansible-playbook not found in PATH. "
+        "Please start the server with: source /home/tsc/tsc_profile && python3 bin/server.py",
+        file=sys.stderr,
+    )
+
 
 def main():
     config = Config()

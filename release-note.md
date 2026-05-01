@@ -1,5 +1,48 @@
 # Release Notes
 
+## Version=1.16.0
+
+2026-05-01
+
+### Bug Fixes
+
+#### 1. ansible_shell Returns Incorrect Results (rc: -1, status: failed)
+
+When `ansible_shell` executed successfully, the MCP client received all hosts as failed with `rc: -1` and empty stdout/stderr. Root cause: `ansible_shell` bypassed `_build_summary_result` and `_parse_result` defaulted to `rc: -1` when `runner_on_ok` events were not matched.
+
+Fix: `ansible_shell` now uses `_build_summary_result` for consistent result structure, and adds a `result.stats` fallback to correct `rc` when event matching fails.
+
+#### 2. Debug Playbook Cache Shows Unsubstituted Variables
+
+`logs/debug/{task_id}/playbook.yml` showed raw `{{ var_name }}` placeholders instead of actual `extravars` values. Fix: extravars are now substituted into the cached content before writing.
+
+### Improvements
+
+#### 3. Tool Descriptions and Instructions Externalized to Markdown
+
+All MCP tool `description` strings and `MCP_INSTRUCTIONS` are now loaded from `etc/instructions.md` and `etc/tool_descriptions/*.md` at startup via `lib/tool_description_loader.py`. A shared `_polling_rules.md` fragment is injected via `{{POLLING_RULES}}` placeholder, eliminating duplication across tools.
+
+#### 4. Strict LLM Polling Behavior Rules
+
+All async tools now include explicit MUST/MUST NOT rules for `status: "running"` handling. The same rules are added to `MCP_INSTRUCTIONS` as global behavior rules with highest priority. Key rules: poll every 60 seconds, never ask the user, never change the interval, never stop polling due to unchanged status.
+
+#### 5. Startup Warning for Missing ansible-playbook in PATH
+
+`bin/server.py` now prints a warning to stderr at startup if `ansible-playbook` is not found in PATH, preventing silent `rc=127` failures at runtime.
+
+### Files Changed
+
+- `lib/executor.py` - ansible_shell fix, debug cache extravars substitution
+- `lib/execution_service.py` - polling message update
+- `lib/tool_description_loader.py` (new)
+- `etc/instructions.md` (new)
+- `etc/tool_descriptions/` (new directory, 10 files)
+- `lib/mcp_tools/ansible_shell.py`, `ansible_copy.py`, `ansible_fetch.py`, `check_host_status.py`, `task_results.py`, `change_ssh_password.py`, `change_ssh_port.py`
+- `lib/server.py`
+- `bin/server.py`
+
+---
+
 ## Version=1.15.0
 
 2026-05-01
