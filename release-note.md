@@ -1,5 +1,89 @@
 # Release Notes
 
+## Version=1.15.0
+
+2026-05-01
+
+### 新功能
+
+#### 1. 异步任务查询增强系统（三层查询模式）
+
+实现了结构化的三层查询模式，为 LLM 代理提供清晰、渐进式的任务结果访问方式，避免上下文过载。
+
+**三层查询架构：**
+
+```
+第一层：任务摘要查询
+├─ 调用：get_result(task_id)
+├─ 数据源：TaskRepository (SQLite)
+└─ 返回：task_id, status, total_hosts, success_count, failed_count
+
+第二层：主机列表查询（按状态过滤）
+├─ 调用：get_result(task_id, status="failed"|"success")
+├─ 数据源：ResultStore (JSON 文件)
+└─ 返回：filtered_hosts {host_ip: {rc, stdout, stderr, status}}
+
+第三层：单个主机详情查询
+├─ 调用：get_host_detail(task_id, host_ip)
+├─ 数据源：ResultStore (JSON 文件)
+└─ 返回：host_ip, rc, stdout, stderr, status
+```
+
+**新增 MCP 工具：**
+- `get_host_detail(task_id, host)` - 查询单个主机在指定任务中的执行详情
+
+**增强 MCP 工具：**
+- `get_result(task_id, status=None)` - 支持三种查询模式（摘要/失败主机/成功主机）
+
+**向后兼容性：**
+- `get_result(task_id, status="failed")` 保持现有行为
+- TaskRepository 数据库架构未变更
+- ResultStore 文件格式未变更
+- 所有现有异步工具核心逻辑未变更
+
+#### 2. 异步工具轮询指导增强
+
+所有异步工具（`ansible_shell`、`ansible_copy`、`ansible_fetch`、`check_host_status`）在返回 "running" 状态时，现在包含：
+- 确切的 `get_result(task_id)` 调用语法
+- 建议的 30-60 秒轮询间隔
+
+#### 3. 统一错误响应格式
+
+所有错误响应均包含 `task_id` 字段，便于追溯。错误类型包括：
+- `status: "not_found"` - 任务或主机不存在
+- `status: "running"` - 任务仍在运行
+- `status: "error"` - 无效参数或结果文件缺失
+
+### 改进
+
+#### 1. TaskResultStore 增强
+
+- 新增 `get_host_result(task_id, host)` 方法，支持读取单个主机结果
+- 增强 `get_result(task_id, status)` 支持 `status="success"` 过滤，返回 `success_hosts` 和 `total_success`
+
+#### 2. 性能优化
+
+- 任务摘要查询（第一层）仅读取 SQLite 数据库，不读取 JSON 结果文件
+- 主机列表查询（第二层）读取 JSON 文件一次并在内存中过滤
+- 单主机查询（第三层）读取 JSON 文件一次并仅提取请求的主机数据
+
+### 文件变更
+
+#### 修改文件
+
+- `lib/mcp_tools/task_results.py` - 重构 `get_result`，新增 `get_host_detail`，更新工具描述
+- `lib/task_result_store.py` - 新增 `get_host_result()` 方法，增强 `get_result()` 支持 status="success"
+- `docs/API-REFERENCE.md` - 更新 MCP 工具表（替换旧工具名），新增 3.7/3.8 节，完善 Async Task Query API 章节，修正 `get_host_detail` 成功响应示例
+
+### 测试验证
+
+- ✅ TaskResultStore `get_host_result()` 单元测试（成功/主机不存在/任务不存在）
+- ✅ `get_result` 三种查询模式单元测试（摘要/失败主机/成功主机/无效参数/任务不存在/运行中）
+- ✅ `get_host_detail` 单元测试（成功/主机不存在/任务不存在/运行中）
+- ✅ 错误响应格式单元测试（所有错误场景）
+
+---
+
 ## Version=1.14.0
 
 2026-04-26

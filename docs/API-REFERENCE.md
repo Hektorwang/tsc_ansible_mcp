@@ -754,22 +754,21 @@ GET /health
 
 MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 REST API 接口说明。
 
-| 工具名称             | 功能描述                                       | 对应 REST API |
-| -------------------- | ---------------------------------------------- | ------------- |
-| `check_host_status`  | 检查主机状态（架构、发行版、Python、tsc_tools）| 2.1           |
-| `install_tsc_tools`  | 安装 tsc_tools 环境                            | 2.2           |
-| `install_python`     | 安装 tsc_python 环境                           | 2.3           |
-| `ansible_shell`      | 执行远程 Shell 命令                            | 2.5           |
-| `ansible_copy`       | 调用 ansible copy 模块，分发文件到远程主机     | 2.6           |
-| `ansible_fetch`      | 调用 ansible fetch 模块，从远程主机获取文件    | 2.7           |
-| `get_task_detail`    | 查询特定主机在指定任务中的执行详情             | 2.13          |
-| `get_failed_hosts`   | 查询指定任务中所有失败主机的详情               | -             |
-| `get_all_results`    | 分页查询指定任务的所有主机执行结果             | -             |
-| `set_context`        | 设置上下文键值对                               | -             |
-| `get_context`        | 获取上下文值                                   | -             |
-| `delete_context`     | 删除指定的上下文键值对                         | -             |
-| `list_contexts`      | 列出所有上下文键值对                           | -             |
-| `clear_contexts`     | 清空所有上下文数据                             | -             |
+| 工具名称             | 功能描述                                                                 | 对应 REST API |
+| -------------------- | ------------------------------------------------------------------------ | ------------- |
+| `check_host_status`  | 检查主机状态（架构、发行版、Python、tsc_tools）                          | 2.1           |
+| `install_tsc_tools`  | 安装 tsc_tools 环境                                                      | 2.2           |
+| `install_python`     | 安装 tsc_python 环境                                                     | 2.3           |
+| `ansible_shell`      | 执行远程 Shell 命令                                                      | 2.5           |
+| `ansible_copy`       | 调用 ansible copy 模块，分发文件到远程主机                               | 2.6           |
+| `ansible_fetch`      | 调用 ansible fetch 模块，从远程主机获取文件                              | 2.7           |
+| `get_result`         | 查询任务执行结果，支持三种模式：任务摘要、失败主机列表、成功主机列表     | -             |
+| `get_host_detail`    | 查询单个主机在指定任务中的执行详情（rc、stdout、stderr、status）         | -             |
+| `set_context`        | 设置上下文键值对                                                         | -             |
+| `get_context`        | 获取上下文值                                                             | -             |
+| `delete_context`     | 删除指定的上下文键值对                                                   | -             |
+| `list_contexts`      | 列出所有上下文键值对                                                     | -             |
+| `clear_contexts`     | 清空所有上下文数据                                                       | -             |
 
 ### 3.1 check_host_status
 
@@ -832,6 +831,45 @@ MCP 工具与 REST API 功能一致，参数和输出格式相同，详见各 RE
 - `dest` (required): 本地目标目录
 - `credentials` (optional): SSH 凭据信息
 - `flat` (optional): 是否扁平化目录结构（默认 false）
+
+### 3.7 get_result
+
+查询任务执行结果，支持三种查询模式。  
+Retrieve task execution results with three query modes.
+
+**参数 / Parameters：**
+- `task_id` (required): 任务 ID / Task ID
+- `status` (optional): 状态过滤器，有效值：`"failed"` 或 `"success"`。省略时返回任务摘要。  
+  Status filter. Valid values: `"failed"` or `"success"`. Omit to get task summary.
+
+**三种查询模式 / Three Query Modes：**
+
+| 调用方式 / Call | 返回内容 / Returns |
+| --------------- | ------------------- |
+| `get_result(task_id)` | 任务摘要（total_hosts, success_count, failed_count）/ Task summary |
+| `get_result(task_id, status="failed")` | 所有失败主机列表及详情 / All failed hosts with details |
+| `get_result(task_id, status="success")` | 所有成功主机列表及详情 / All successful hosts with details |
+
+详细说明见 [Async Task Query API](#async-task-query-api) 章节。  
+See the [Async Task Query API](#async-task-query-api) section for full documentation.
+
+### 3.8 get_host_detail
+
+查询单个主机在指定任务中的执行详情（第三层查询）。  
+Query execution details for a specific host in a task (Layer 3 query).
+
+**参数 / Parameters：**
+- `task_id` (required): 任务 ID / Task ID
+- `host` (required): 主机 IP 地址 / Host IP address
+
+**返回字段 / Return Fields：**
+- `rc`: 命令返回码（0 = 成功）/ Return code (0 = success)
+- `stdout`: 标准输出 / Standard output
+- `stderr`: 标准错误 / Standard error
+- `status`: `"success"` 或 `"failed"`
+
+详细说明见 [Async Task Query API](#async-task-query-api) 章节。  
+See the [Async Task Query API](#async-task-query-api) section for full documentation.
 
 ## Async Task Query API
 
@@ -1013,7 +1051,26 @@ Query execution details for a specific host (Layer 3 query).
 {"task_id": "job_abc123", "host": "192.168.1.10"}
 ```
 
-#### 成功响应 / Success Response
+#### 成功主机示例 / Successful Host Example
+
+当主机执行成功时（rc=0）：  
+When the host executed successfully (rc=0):
+
+```json
+{
+  "task_id": "job_abc123",
+  "host": "192.168.1.10",
+  "rc": 0,
+  "stdout": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1       100G   50G   50G  50% /",
+  "stderr": "",
+  "status": "success"
+}
+```
+
+#### 失败主机示例 / Failed Host Example
+
+当主机执行失败时（rc≠0）：  
+When the host execution failed (rc≠0):
 
 ```json
 {
