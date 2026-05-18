@@ -1,5 +1,12 @@
 # Release Notes
 
+## Version=1.17.0
+
+2026-05-18
+
+1. 修复 debug 模式时, 未保存 inventory.json 文件问题
+2. 修复 bootstrap_tsc_environment.yml 中的 python 安装验证逻辑问题
+
 ## Version=1.16.0
 
 2026-05-01
@@ -73,12 +80,15 @@ All async tools now include explicit MUST/MUST NOT rules for `status: "running"`
 ```
 
 **新增 MCP 工具：**
+
 - `get_host_detail(task_id, host)` - 查询单个主机在指定任务中的执行详情
 
 **增强 MCP 工具：**
+
 - `get_result(task_id, status=None)` - 支持三种查询模式（摘要/失败主机/成功主机）
 
 **向后兼容性：**
+
 - `get_result(task_id, status="failed")` 保持现有行为
 - TaskRepository 数据库架构未变更
 - ResultStore 文件格式未变更
@@ -87,12 +97,14 @@ All async tools now include explicit MUST/MUST NOT rules for `status: "running"`
 #### 2. 异步工具轮询指导增强
 
 所有异步工具（`ansible_shell`、`ansible_copy`、`ansible_fetch`、`check_host_status`）在返回 "running" 状态时，现在包含：
+
 - 确切的 `get_result(task_id)` 调用语法
 - 建议的 30-60 秒轮询间隔
 
 #### 3. 统一错误响应格式
 
 所有错误响应均包含 `task_id` 字段，便于追溯。错误类型包括：
+
 - `status: "not_found"` - 任务或主机不存在
 - `status: "running"` - 任务仍在运行
 - `status: "error"` - 无效参数或结果文件缺失
@@ -138,12 +150,14 @@ All async tools now include explicit MUST/MUST NOT rules for `status: "running"`
 修复了通过 MCP 工具对批量主机（约 10 台）执行操作时，LLM 客户端收到 `MCP error -32001: Request timed out` 错误，以及 LLM 超时后后台任务状态悬空的问题。
 
 **问题原因：**
+
 - `ansible_shell`、`run_playbook`、`ansible_copy`、`ansible_fetch` 在执行前会隐式调用 `check_host_status` 作为前置探测，相当于串行执行两轮 ansible，总耗时翻倍
 - 所有执行方法同步阻塞 HTTP 请求，MCP 客户端超时后后台进程仍在运行，结果无法查询
 - `execution_service.execute_shell` 的 `finally` 块存在 `NameError` 隐患
 - `[execution]` 节的 `timeout` 配置项从未被使用，与 `[mcp].default_timeout` 并存造成混淆
 
 **修复内容：**
+
 - 移除 4 个执行方法中的隐式 `check_host_status` 前置调用，直接执行操作
 - 所有执行方法改为后台线程模式：主线程等待 55 秒，超时后返回 `running` 状态，后台继续执行并将结果写入 DB，LLM 可通过 `get_task_status(task_id)` 查询最终结果
 - 在 `ansible_shell`、`ansible_copy`、`ansible_fetch` 及所有 playbook 工具描述中明确提示 LLM 调用前必须先执行 `check_host_status`
@@ -162,12 +176,14 @@ All async tools now include explicit MUST/MUST NOT rules for `status: "running"`
 修复了通过 MCP 调用 `change_ssh_port` 工具修改 SSH 端口时，客户端收到 `MCP error -32001: Request timed out` 错误。
 
 **问题原因：**
+
 - 旧实现中每个步骤（备份、修改配置、测试、重启、验证等）都独立调用 `execute_shell()`
 - 每次调用都会触发 `check_host_status` 进行环境检测和主机锁获取/释放
 - 对于 2 台主机、9 个步骤的场景，总共会执行约 18 次 `check_host_status` + 18 次 ansible shell playbook
 - 每次 playbook 执行都有启动开销，累积时间极易超过 MCP 客户端的默认超时时间（通常 30-60 秒）
 
 **修复内容：**
+
 - 将 `change_ssh_port` 的实现从 Python 多步骤串行调用改为三步方案
 - 第一步：执行 `check_host_status` 获取当前端口（每台主机 1 次）
 - 第二步：调用外联 playbook `change_ssh_port.yml` 执行完整的端口变更流程（每台主机 1 次）
@@ -175,10 +191,12 @@ All async tools now include explicit MUST/MUST NOT rules for `status: "running"`
 - 每台主机只需 1 次 `check_host_status` + 1 次 playbook + 1 次验证，大幅减少 ansible 调用次数
 
 **新增文件：**
+
 - `playbooks/change_ssh_port.yml` - 外联 playbook，使用 `raw` 模块执行 Python 脚本
 - `scripts/change_ssh_port_on_target.py` - 目标主机上执行的 Python 脚本
 
 **改进内容：**
+
 - 新增主机数量限制：超过 50 台直接失败返回
 - 新增端口范围校验：目的端口必须为 22 或在 1024-65535 范围内
 - 全程持有主机锁，避免中间被其他任务抢占
@@ -187,6 +205,7 @@ All async tools now include explicit MUST/MUST NOT rules for `status: "running"`
 - 修复结果解析 Bug（`backup_result.get(host, {})` 应为 `backup_result.get("results", {}).get(host, {})`）
 
 **影响范围：**
+
 - `change_ssh_port` MCP 工具 - 重构为三步方案
 - `playbooks/change_ssh_port.yml` - 新增外联 playbook
 - `scripts/change_ssh_port_on_target.py` - 新增 Python 脚本
@@ -247,16 +266,19 @@ change_ssh_port MCP 工具
 修复了包管理器中使用字符串字典序排序版本号，导致 beta10 被错误识别为比 beta9 旧的问题。
 
 **问题原因：**
+
 - `lib/package_manager/scanner.py` 中 `get_latest_package()` 方法使用字符串比较排序版本
 - 字典序比较时，`"beta9" > "beta10"` 因为 `'9' > '1'`
 - 导致 `/api/v1/packages/download` 接口返回旧版本 beta9 而非最新 beta10
 
 **修复内容：**
+
 - 引入 `packaging.version.parse` 进行语义化版本比较
 - 将字符串排序替换为语义化版本排序
 - 正确识别 `beta10 > beta9`、`rc > beta`、`正式版 > 预发布版`
 
 **影响范围：**
+
 - `GET /api/v1/packages/download` - 现在正确返回最新版本
 - `GET /api/v1/packages/list/{pkg_type}` - 列表顺序正确
 
@@ -359,6 +381,7 @@ lib/api/routes/
 修复了主机锁未正确释放导致的死锁问题，确保所有执行方法都能正确管理主机锁。
 
 **问题原因：**
+
 - `ansible_shell`、`ansible_copy` 和 `ansible_fetch` 方法缺少锁管理逻辑
 - 当这些方法执行时，主机锁被获取但未在所有情况下释放
 - 导致主机被永久锁定，无法执行后续操作
@@ -378,6 +401,7 @@ lib/api/routes/
 增加了详细的锁管理日志，便于诊断和解决锁相关的问题。
 
 **修复内容：**
+
 - 在 `_acquire_hosts` 方法中增加了详细的日志，包括尝试获取锁、获取成功和失败的情况
 - 在 `_release_hosts` 方法中增加了详细的日志，包括尝试释放锁、释放成功和跳过的情况
 - 将一些 debug 级别的日志提升为 info 级别，以便在正常日志中也能看到锁的操作情况
@@ -387,10 +411,12 @@ lib/api/routes/
 修复了 localhost 连接被拒绝的问题，为 localhost 添加了特殊处理逻辑。
 
 **问题原因：**
+
 - 当目标主机是 localhost 时，代码仍然尝试通过 SSH 连接到 localhost:22
 - 导致出现 "Connection refused" 错误
 
 **修复内容：**
+
 - 修改了 `_build_inventory` 方法，为 localhost 添加了特殊处理逻辑
 - 当目标是 "localhost" 时，使用 `ansible_connection: local` 而不是 SSH 连接
 - 为 localhost 设置了默认的 Python 解释器路径 `/usr/bin/python3`
@@ -400,10 +426,12 @@ lib/api/routes/
 修复了 `install_python` 方法中 `installed` 字段的返回值问题。
 
 **问题原因：**
+
 - 当 tsc_python 已经安装时，`install_python` 方法返回的 `installed` 字段为 False
 - 导致 LLM 认为 Python 未安装，重复尝试安装
 
 **修复内容：**
+
 - 修改了 `install_python` 方法中的逻辑，当 tsc_python 已经安装时，返回的 `installed` 字段为 True
 - 确保 LLM 能够正确理解 Python 安装状态
 
@@ -414,6 +442,7 @@ lib/api/routes/
 为所有 MCP 工具添加了响应日志，以便更好地跟踪服务是否正确返回了响应。
 
 **改进内容：**
+
 - `ansible_shell.py` - 添加了响应日志，记录执行结果
 - `ansible_copy.py` - 添加了响应日志，记录文件分发结果
 - `ansible_fetch.py` - 添加了响应日志，记录文件获取结果
@@ -427,6 +456,7 @@ lib/api/routes/
 优化了 SSH 配置，确保当使用密码认证时，Ansible 会直接使用密码而不尝试公钥认证。
 
 **改进内容：**
+
 - 确保 `PubkeyAuthentication=no` 参数被正确包含在 SSH 命令中
 - 避免因公钥认证失败导致的连接延迟
 - 提高 SSH 连接的可靠性
@@ -475,6 +505,7 @@ lib/api/routes/
 修复了 `task_id` 在 server.py 和 executor.py 中不一致的问题，导致 `get_task_detail` 查询失败。
 
 **问题原因：**
+
 - `server.py` 创建了一个 `task_id`
 - `executor` 内部又创建了新的 `task_id`
 - `task_result_store.save_result` 保存的是 executor 内部的 task_id
@@ -504,10 +535,12 @@ lib/api/routes/
 修复了 CherryStudio 传递 extravars 为 JSON 字符串时验证失败的问题。
 
 **问题原因：**
+
 - CherryStudio 将 extravars 作为 JSON 字符串传递
 - Pydantic 验证期望字典类型，导致验证错误
 
 **修复内容：**
+
 - `extravars` 参数类型改为 `Optional[Union[Dict[str, Any], str]]`
 - 添加字符串解析逻辑，自动将 JSON 字符串转换为字典
 
@@ -518,10 +551,12 @@ lib/api/routes/
 移除了 watchdog 库实现的实时文件监控功能。
 
 **移除原因：**
+
 - FastMCP 的工具注册机制限制，文件变化后需要重启服务才能使新的工具生效
 - 实时监控功能实际无意义，反而增加系统复杂度
 
 **移除内容：**
+
 - 移除 `PlaybookScanner.start_watching()` 方法
 - 移除 `PlaybookScanner.stop_watching()` 方法
 - 移除 `PlaybookScanner.on_file_created/modified/deleted()` 方法

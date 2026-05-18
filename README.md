@@ -2,19 +2,31 @@
 
 ## 说明
 
-将 Ansible 的 shell、copy、fetch、playbook 功能 MCP 化, 通过 LLM 客户端对受控主机执行远程操作. 
+将 Ansible 的 shell、copy、fetch、playbook 功能 MCP 化, 通过 LLM 客户端对受控主机执行远程操作.
 
 ## 安装条件
 
-1. MCP 主机需持有受控主机的 SSH 信任私钥文件(如 `id_rsa`). 
-2. MCP 主机的 8500 端口未被占用. 
-3. 运行环境需使用 tsc_python(`source /home/tsc/tsc_profile`). 
+1. MCP 主机需持有受控主机的 SSH 信任私钥文件(如 `id_rsa`).
+2. MCP 主机的 8500 端口未被占用.
+3. 运行环境需使用 tsc_python(`source /home/tsc/tsc_profile`).
 
 ## 安装
 
-将安装包解压到 `/home/tsc/tsc_ansible_mcp/`, 并进入该目录. 
+将安装包解压到 `/home/tsc/tsc_ansible_mcp/`, 并进入该目录.
 
-**1. 编辑受控主机配置文件**
+注意必须遵循 Ansible 的 YAML 配置格式.
+
+### 1. 配置主配置文件
+
+编辑 `etc/tsc_ansible_mcp.toml`, 一般仅需将 `mcp.host` 改为本机 IP：
+
+```toml
+[mcp]
+host = "192.168.3.252"  # 改为本机 IP
+port = 8500
+```
+
+### 2. 编辑受控主机配置文件
 
 参考 `etc/inventory.yml.sample` 编辑 `etc/inventory.yml`, 在做好 SSH 信任的情况下一般仅需配置 `ansible_port`：
 
@@ -27,37 +39,26 @@ all:
       ansible_port: 22
 ```
 
-注意必须遵循 Ansible 的 YAML 配置格式. 
-
-**2. 导入受控主机配置到数据库**
+### 3. 导入受控主机配置到数据库
 
 ```bash
-source /home/tsc/tsc_profile
+source /home/tsc/tsc_ansible_mcp/.venv/bin/activate
 python3 bin/inventory.py import
 ```
 
-后续若要增加主机或调整配置, 修改 `etc/inventory.yml` 后重新运行以上命令. 
+后续若要增加主机或调整配置, 修改 `etc/inventory.yml` 后重新运行以上命令.
 
-**3. 配置主配置文件**
-
-编辑 `etc/tsc_ansible_mcp.toml`, 一般仅需将 `mcp.host` 改为本机 IP：
-
-```toml
-[mcp]
-host = "192.168.3.252"  # 改为本机 IP
-port = 8500
-```
-
-**4. 将 tsc_tools 和 tsc_python 安装包放到 `tsc_install` 目录下**(用于 bootstrap 功能). 
+### 4. 将 tsc_tools 和 tsc_python 安装包放到 `tsc_install` 目录下, 本次已经带上这些文件
 
 ## 运行
 
 ```bash
-source /home/tsc/tsc_profile
-python3 bin/server.py
+source /home/tsc/tsc_ansible_mcp/.venv/bin/activate
+python3 bin/server.py & disown
 ```
 
 服务启动后：
+
 - MCP 端点：`http://本机IP:8500/mcp`
 - REST API 文档：`http://本机IP:8500/docs`
 
@@ -70,28 +71,28 @@ python3 bin/server.py
 
 ## MCP 工具介绍
 
-1. **`ansible_shell`** — 在受控主机上执行指定命令. 命令黑名单中的高危命令不可执行. 
+1. **`ansible_shell`** — 在受控主机上执行指定命令. 命令黑名单中的高危命令不可执行.
    调度样例：`在 192.168.19.106 上执行 ls /tmp`
 
-2. **`ansible_copy`** — 将 MCP 主机的文件分发到受控主机. 
+2. **`ansible_copy`** — 将 MCP 主机的文件分发到受控主机.
    调度样例：`把本机 /home/tsc/tsc_ansible_mcp/files/config.yml 拷贝到 192.168.19.106 的 /etc/myapp/ 下`
 
-3. **`ansible_fetch`** — 将受控主机的文件采集到 MCP 主机. 
+3. **`ansible_fetch`** — 将受控主机的文件采集到 MCP 主机.
    调度样例：`把 192.168.19.106 的 /tmp/result.log 拷贝到本机 /home/tsc/tsc_ansible_mcp/files/ 下`
 
-4. **`check_host_status`** — 检查受控主机的架构、发行版、Python 和 tsc_tools 安装状态. 
+4. **`check_host_status`** — 检查受控主机的架构、发行版、Python 和 tsc_tools 安装状态.
 
-5. **`playbook_bootstrap_tsc_environment`** — 在受控主机上安装 tsc_tools 和 tsc_python. 
+5. **`playbook_bootstrap_tsc_environment`** — 在受控主机上安装 tsc_tools 和 tsc_python.
 
-6. **`change_ssh_port`** — 修改受控主机的 SSH 服务端口(允许范围：22 或 1024-65535), 失败自动回滚. 
+6. **`change_ssh_port`** — 修改受控主机的 SSH 服务端口(允许范围：22 或 1024-65535), 失败自动回滚.
    调度样例：`修改 192.168.19.106 的 SSH 端口为 12345`
 
-7. **`change_ssh_password`** — 修改受控主机的 root 用户密码(**8 位以上, 含数字、字母、特殊字符**). 
+7. **`change_ssh_password`** — 修改受控主机的 root 用户密码(**8 位以上, 含数字、字母、特殊字符**).
    调度样例：`修改 192.168.19.106 的 SSH 密码为 !@#QWE123`
 
-8. **`get_result`** — 查询异步任务结果(任务超过 55 秒时会返回 running 状态, 需轮询此工具). 
+8. **`get_result`** — 查询异步任务结果(任务超过 55 秒时会返回 running 状态, 需轮询此工具).
 
-9. **`playbook_*`** — 动态生成的 playbook 工具, 服务启动时自动扫描 `playbooks/` 目录生成. 
+9. **`playbook_*`** — 动态生成的 playbook 工具, 服务启动时自动扫描 `playbooks/` 目录生成.
 
 ## 维护
 
@@ -125,7 +126,7 @@ high_risk_commands = ["rm", "unlink", "halt", "shutdown", "mkfs", "parted", "reb
 
 ### 安全控制
 
-本工具可在受控主机上执行命令、采集和分发文件, 建议使用 iptables 限制可连入本服务的客户端 IP. **防火墙或下方的用户认证鉴权机制, 建议至少启用一个. **
+本工具可在受控主机上执行命令、采集和分发文件, 建议使用 iptables 限制可连入本服务的客户端 IP. **防火墙或下方的用户认证鉴权机制, 建议至少启用一个.**
 
 ```bash
 # 在 MCP 主机上执行, 顺序不可颠倒
@@ -135,7 +136,7 @@ iptables -t filter -I INPUT -s 可信任的客户端IP -p tcp --dport 8500 -j AC
 
 ### 用户认证鉴权
 
-本工具支持 JWT 用户权限管理, 可控制不同用户允许调用的 MCP 工具范围. 
+本工具支持 JWT 用户权限管理, 可控制不同用户允许调用的 MCP 工具范围.
 
 **生成密钥和签发 Token：**
 
@@ -155,7 +156,7 @@ python3 bin/generate_jwt.py --list
 
 签发后记录 token 字符串, 在 MCP 客户端请求头中配置：`Authorization=Bearer 用户的token`
 
-**吊销 token：** 删除 `etc/jwt_issued_tokens.json` 中对应条目后重启服务. 
+**吊销 token：** 删除 `etc/jwt_issued_tokens.json` 中对应条目后重启服务.
 
 **启用认证并配置权限：**
 
@@ -173,7 +174,7 @@ admin = ["*"]
 user = ["playbook_bootstrap_tsc_environment", "get_result", "check_host_status", "playbook_*"]
 ```
 
-修改后重启服务生效. 
+修改后重启服务生效.
 
 ## 相关文档
 

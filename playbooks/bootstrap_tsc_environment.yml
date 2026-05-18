@@ -1,4 +1,3 @@
-
 ---
 - name: Bootstrap TSC environment
   hosts: all
@@ -8,18 +7,12 @@
 
   tasks:
     - name: Detect distribution
-      ansible.builtin.shell:
-        cmd: |-
-          cat /etc/os-release | grep ID= | head -1 | cut -d= -f2 | tr -d '"'
-        executable: /bin/bash
+      ansible.builtin.raw: cat /etc/os-release | grep ID= | head -1 | cut -d= -f2 | tr -d '"'
       register: distro_output
       ignore_errors: true
 
     - name: Detect architecture
-      ansible.builtin.shell:
-        cmd: |-
-          uname -m
-        executable: /bin/bash
+      ansible.builtin.raw: uname -m
       register: arch_output
       ignore_errors: true
 
@@ -29,18 +22,12 @@
         arch: "{{ arch_output.stdout.strip() }}"
 
     - name: Check if tsc_tools is already installed
-      ansible.builtin.shell:
-        cmd: |-
-          command -v tsc_tools || echo 'not_installed'
-        executable: /bin/bash
+      ansible.builtin.raw: command -v tsc_tools || echo 'not_installed'
       register: tsc_tools_check
       ignore_errors: true
 
     - name: Check if tsc_python is already installed
-      ansible.builtin.shell:
-        cmd: |-
-          command -v tsc_python || echo 'not_installed'
-        executable: /bin/bash
+      ansible.builtin.raw: command -v tsc_python || echo 'not_installed'
       register: tsc_python_check
       ignore_errors: true
 
@@ -51,16 +38,13 @@
 
     - name: Download and install tsc_tools
       when: install_tsc_tools
-      ansible.builtin.shell:
-        cmd: |-
-          set -e
-          set -o pipefail
-          [[ -f /tmp/tsc_tools.sh ]] && rm -f /tmp/tsc_tools.sh
-          curl -k -sSL -o /tmp/tsc_tools.sh "{{ api_url }}?pkg_type=tsc_tools&distro={{ distro }}&arch={{ arch }}"
-          chmod +x /tmp/tsc_tools.sh
-          /tmp/tsc_tools.sh
-          [[ -f /tmp/tsc_tools.sh ]] && rm -f /tmp/tsc_tools.sh
-        executable: /bin/bash
+      ansible.builtin.raw: >-
+        set -e && set -o pipefail &&
+        [[ -f /tmp/tsc_tools.sh ]] && rm -f /tmp/tsc_tools.sh;
+        curl -k -sSL -o /tmp/tsc_tools.sh "{{ api_url }}?pkg_type=tsc_tools&distro={{ distro }}&arch={{ arch }}";
+        chmod +x /tmp/tsc_tools.sh;
+        /tmp/tsc_tools.sh;
+        [[ -f /tmp/tsc_tools.sh ]] && rm -f /tmp/tsc_tools.sh
       register: tsc_tools_install
       retries: 3
       delay: 10
@@ -68,16 +52,13 @@
 
     - name: Download and install tsc_python
       when: install_tsc_python
-      ansible.builtin.shell:
-        cmd: |-
-          set -e
-          set -o pipefail
-          [[ -f /tmp/tsc_python.sh ]] && rm -f /tmp/tsc_python.sh
-          curl -k -sSL -o /tmp/tsc_python.sh "{{ api_url }}?pkg_type=tsc_python&distro={{ distro }}&arch={{ arch }}"
-          chmod +x /tmp/tsc_python.sh
-          /tmp/tsc_python.sh
-          [[ -f /tmp/tsc_python.sh ]] && rm -f /tmp/tsc_python.sh
-        executable: /bin/bash
+      ansible.builtin.raw: >-
+        set -e && set -o pipefail &&
+        [[ -f /tmp/tsc_python.sh ]] && rm -f /tmp/tsc_python.sh;
+        curl -k -sSL -o /tmp/tsc_python.sh "{{ api_url }}?pkg_type=tsc_python&distro={{ distro }}&arch={{ arch }}";
+        chmod +x /tmp/tsc_python.sh;
+        /tmp/tsc_python.sh;
+        [[ -f /tmp/tsc_python.sh ]] && rm -f /tmp/tsc_python.sh
       register: tsc_python_install
       retries: 3
       delay: 10
@@ -85,14 +66,12 @@
 
     - name: Verify tsc_python installation
       when: install_tsc_python
-      ansible.builtin.shell:
-        cmd: |-
-          source /home/tsc/tsc_profile
-          python -V
+      ansible.builtin.raw: >-
+        source /home/tsc/tsc_profile && python -V
       register: tsc_python_verify
       ignore_errors: true
 
     - name: Show installation results
       ansible.builtin.debug:
         msg:
-          - "tsc_python installed: {{ 'success' if tsc_python_verify.rc == 0 else 'failed' }}"
+          - "tsc_python installed: {{ 'success' if tsc_python_verify.skipped | default('failed') or tsc_python_verify.rc == 0 else 'failed' }}"

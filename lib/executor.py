@@ -122,7 +122,7 @@ class Executor:
             )
         else:
             file_path.write_text(str(data), encoding="utf-8")
-        logger.debug(f"Debug cache saved: {file_path}")
+        logger.info(f"Debug cache saved: {file_path}")
 
     def _install_signal_handlers(self):
         """Install signal handlers to ensure locks are released."""
@@ -323,9 +323,7 @@ class Executor:
                         for var_name, var_value in extravars.items():
                             playbook_content = playbook_content.replace(
                                 f"{{{{ {var_name} }}}}", str(var_value)
-                            ).replace(
-                                f"{{{{{var_name}}}}}", str(var_value)
-                            )
+                            ).replace(f"{{{{{var_name}}}}}", str(var_value))
                     self._cache_debug_file("playbook.yml", playbook_content)
             else:
                 resolved_playbook_path = tmpdir_path / "playbook.yml"
@@ -1103,7 +1101,9 @@ class Executor:
             for host in results:
                 results[host]["elapsed"] = f"{elapsed:.2f}s"
 
-            return self._build_summary_result(final_task_id, results, elapsed, "ansible_shell")
+            return self._build_summary_result(
+                final_task_id, results, elapsed, "ansible_shell"
+            )
         finally:
             # 释放主机锁
             self._release_hosts(targets)
@@ -1334,9 +1334,14 @@ class Executor:
             # detect_result parameter is retained for compatibility but no longer used.
             # Host environment detection should be performed explicitly via check_host_status
             # before calling this method.
+            # Set task_id first so that _build_inventory can cache debug files
+            final_task_id = task_id or str(uuid.uuid4())
+            self._current_task_task_id = final_task_id
+
             try:
                 inventory = self._build_inventory(targets)
             except ValueError as e:
+                self._current_task_task_id = None
                 return {
                     "task_id": task_id or str(uuid.uuid4()),
                     "status": "failed",
@@ -1356,9 +1361,6 @@ class Executor:
                         for host in targets
                     },
                 }
-
-            final_task_id = task_id or str(uuid.uuid4())
-            self._current_task_task_id = final_task_id
 
             start_time = time.time()
             result, run_events = self._run_ansible(
